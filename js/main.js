@@ -231,6 +231,7 @@ window.saveLeadData = CRM.saveLeadData;
 window.addInteraction = CRM.addInteraction;
 window.openCrmSettings = CRM.openCrmSettings;
 window.saveCrmField = CRM.saveCrmField;
+window.uploadCrmFile = CRM.uploadCrmFile;
 
 
 // --- Divers / Utilitaires ---
