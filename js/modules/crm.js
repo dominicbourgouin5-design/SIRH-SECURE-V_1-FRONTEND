@@ -196,104 +196,104 @@ export function initDragAndDrop() {
     });
 }
 
-// --- 4. LA FICHE CLIENT (Formulaire Dynamique + Historique) ---
 export async function openLeadModal(id = null) {
-    const lead = id ? AppState.crmLeads.find(l => l.id === id) : { data: {} };
-    const title = id ? lead.nom_client : "Nouveau Prospect";
+    const lead = id ? AppState.crmLeads.find(l => l.id === id) : { data: {}, history: [] };
     
-    // GÉNÉRATION DYNAMIQUE DES CHAMPS (Le No-Code !)
+    // 1. GÉNÉRATION DES CHAMPS PROFESSIONNELS
     let dynamicHtml = '';
-    const fields = AppState.crmFields || [];
-    
-    fields.forEach(f => {
+    AppState.crmFields.forEach(f => {
         const val = lead.data[f.key_name] || '';
-        let inputHtml = '';
-        
-        if (f.field_type === 'text') inputHtml = `<input id="dyn-${f.key_name}" value="${val}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500">`;
-        if (f.field_type === 'number') inputHtml = `<input type="number" id="dyn-${f.key_name}" value="${val}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500">`;
-        if (f.field_type === 'date') inputHtml = `<input type="date" id="dyn-${f.key_name}" value="${val}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500">`;
+        let fieldWidget = '';
+
+        // Widget dynamique selon le type
+        if (f.field_type === 'select') {
+            const opts = f.options || [];
+            fieldWidget = `<select id="dyn-${f.key_name}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">
+                <option value="">-- Choisir --</option>
+                ${opts.map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('')}
+            </select>`;
+        } else if (f.field_type === 'date') {
+            fieldWidget = `<input type="date" id="dyn-${f.key_name}" value="${val}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">`;
+        } else {
+            // Par défaut : Texte avec icône de copie
+            fieldWidget = `
+                <div class="relative">
+                    <input id="dyn-${f.key_name}" value="${val}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold pr-10">
+                    <button onclick="navigator.clipboard.writeText('${val}')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-blue-500"><i class="fa-solid fa-copy"></i></button>
+                </div>`;
+        }
 
         dynamicHtml += `
             <div class="mb-4">
                 <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">${f.label}</label>
-                ${inputHtml}
+                ${fieldWidget}
             </div>
         `;
     });
 
-    // HISTORIQUE DES INTERACTIONS (Timeline)
-    let historyHtml = '<div class="text-center text-slate-400 text-xs italic py-10 border-2 border-dashed rounded-xl">Aucune interaction</div>';
-    if (lead.history && lead.history.length > 0) {
-        historyHtml = '<div class="space-y-3 max-h-[300px] overflow-y-auto custom-scroll pr-2">';
-        lead.history.slice().reverse().forEach(h => {
-            const icon = h.type === 'APPEL' ? 'fa-phone text-emerald-500' : (h.type === 'EMAIL' ? 'fa-envelope text-blue-500' : 'fa-note-sticky text-orange-500');
-            const dateStr = new Date(h.date).toLocaleDateString('fr-FR', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'});
-            historyHtml += `
-                <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 flex gap-3 items-start">
-                    <i class="fa-solid ${icon} mt-1"></i>
-                    <div>
-                        <p class="text-[10px] font-bold text-slate-400">${h.author} • ${dateStr}</p>
-                        <p class="text-xs text-slate-700 font-medium leading-relaxed mt-1">${h.content}</p>
-                    </div>
-                </div>
-            `;
-        });
-        historyHtml += '</div>';
-    }
-
-    const { value: result } = await Swal.fire({
-        title: `<div class="text-left text-xl font-black uppercase text-slate-800">${title}</div>`,
-        width: '900px',
+    // 2. RENDU DE LA MODALE "DASHBOARD CLIENT"
+    Swal.fire({
+        title: null,
+        width: '1200px', // Très large pour le confort
         customClass: { popup: 'rounded-[2rem] p-0 overflow-hidden' },
         showConfirmButton: false,
         showCloseButton: true,
         html: `
-            <div class="flex flex-col md:flex-row text-left border-t border-slate-100 bg-white min-h-[500px]">
+            <div class="flex flex-col md:flex-row h-[750px] text-left bg-white">
                 
-                <!-- GAUCHE : LE FORMULAIRE -->
-                <div class="w-full md:w-1/2 p-8 border-r border-slate-100">
-                    <p class="text-[10px] font-black text-sky-500 uppercase tracking-widest mb-4"><i class="fa-solid fa-address-card"></i> Informations (Éditables)</p>
-                    
-                    <div class="mb-4">
-                        <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Nom du Client / Entreprise *</label>
-                        <input id="crm-nom" value="${lead.nom_client || ''}" class="w-full p-3 bg-white border-2 border-slate-200 rounded-xl text-sm font-black outline-none focus:border-sky-500">
+                <!-- COLONNE 1 : RÉSUMÉ & CHAMPS (40%) -->
+                <div class="w-full md:w-[40%] p-10 border-r border-slate-100 overflow-y-auto custom-scroll">
+                    <div class="mb-8">
+                        <div class="flex items-center gap-4 mb-4">
+                            <div class="w-16 h-16 rounded-2xl bg-slate-900 flex items-center justify-center text-white text-2xl font-black">${lead.nom_client ? lead.nom_client.charAt(0).toUpperCase() : '+'}</div>
+                            <div>
+                                <h2 class="text-2xl font-black text-slate-800 uppercase tracking-tight">${lead.nom_client || 'Nouveau Prospect'}</h2>
+                                <span class="px-3 py-1 rounded-full bg-blue-100 text-blue-600 text-[10px] font-black uppercase">${lead.status || 'En attente'}</span>
+                            </div>
+                        </div>
+                        <input id="crm-nom" value="${lead.nom_client || ''}" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-black outline-none focus:border-blue-500 mb-6" placeholder="Nom de l'entreprise ou contact...">
+                        
+                        <div class="space-y-2">
+                            ${dynamicHtml}
+                        </div>
+
+                        <button onclick="window.saveLeadData('${id || ''}')" class="w-full mt-8 py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-blue-200 hover:bg-blue-700 transition-all">
+                            Sauvegarder les modifications
+                        </button>
                     </div>
-                    
-                    <!-- INJECTION DES CHAMPS DYNAMIQUES ICI -->
-                    ${dynamicHtml}
-                    
-                    <button onclick="window.saveLeadData('${id || ''}')" class="w-full mt-6 py-4 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-sky-500 transition-all active:scale-95">
-                        <i class="fa-solid fa-floppy-disk mr-2"></i> Enregistrer la fiche
-                    </button>
                 </div>
 
-                <!-- DROITE : HISTORIQUE ET ACTIONS -->
-                <div class="w-full md:w-1/2 p-8 bg-slate-50 flex flex-col">
-                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4"><i class="fa-solid fa-clock-rotate-left"></i> Historique des Échanges</p>
-                    
-                    <!-- Bloc d'ajout d'interaction (Visible uniquement si le lead existe déjà) -->
-                    ${id ? `
-                        <div class="mb-6 bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex gap-2">
-                            <select id="interaction-type" class="bg-slate-50 border-none rounded-lg text-[10px] font-bold outline-none">
+                <!-- COLONNE 2 : CENTRE DE COMMUNICATION (60%) -->
+                <div class="flex-1 bg-slate-50/50 flex flex-col h-full">
+                    <!-- Tabs de communication -->
+                    <div class="flex border-b border-slate-100 bg-white">
+                        <button class="flex-1 p-5 text-[10px] font-black uppercase tracking-widest text-blue-600 border-b-2 border-blue-600"><i class="fa-solid fa-clock-rotate-left mr-2"></i> Historique</button>
+                        <button class="flex-1 p-5 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-blue-500"><i class="fa-solid fa-envelope mr-2"></i> Emails</button>
+                        <button class="flex-1 p-5 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-emerald-500"><i class="fa-solid fa-comment-dots mr-2"></i> WhatsApp</button>
+                    </div>
+
+                    <!-- Flux d'activités -->
+                    <div class="flex-1 p-8 overflow-y-auto custom-scroll space-y-4" id="crm-history-wall">
+                        ${renderHistoryWall(lead.history)}
+                    </div>
+
+                    <!-- Zone de saisie rapide -->
+                    <div class="p-6 bg-white border-t border-slate-100">
+                        <div class="flex gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-200 shadow-inner">
+                            <select id="interaction-type" class="bg-transparent border-none text-[10px] font-black uppercase outline-none px-2 text-slate-500">
                                 <option value="NOTE">📝 Note</option>
                                 <option value="APPEL">📞 Appel</option>
-                                <option value="EMAIL">📧 Email</option>
+                                <option value="RDV">🤝 RDV</option>
                             </select>
-                            <input id="interaction-text" type="text" class="flex-1 bg-transparent text-xs outline-none" placeholder="Ajouter une trace...">
-                            <button onclick="window.addInteraction('${id}')" class="bg-blue-100 text-blue-600 w-8 h-8 rounded-lg hover:bg-blue-600 hover:text-white transition-all"><i class="fa-solid fa-paper-plane text-xs"></i></button>
+                            <input id="interaction-text" class="flex-1 bg-transparent border-none text-sm outline-none py-2" placeholder="Taper un compte-rendu...">
+                            <button onclick="window.addInteraction('${id}')" class="w-10 h-10 bg-slate-900 text-white rounded-xl shadow-lg hover:bg-blue-600 transition-all"><i class="fa-solid fa-paper-plane"></i></button>
                         </div>
-                    ` : '<p class="text-xs text-orange-500 italic mb-4">Enregistrez d\'abord le prospect pour ajouter des notes.</p>'}
-
-                    <!-- Affichage de la Timeline -->
-                    <div class="flex-1">
-                        ${historyHtml}
                     </div>
                 </div>
             </div>
         `
     });
 }
-
 // --- 5. SAUVEGARDE DU FORMULAIRE ---
 export async function saveLeadData(id) {
     const nomClient = document.getElementById('crm-nom').value;
