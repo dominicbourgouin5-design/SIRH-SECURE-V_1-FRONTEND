@@ -534,27 +534,3 @@ window.toggleOptionsInput = (type) => {
     else area.classList.add('hidden');
 };
 
-// Modifie la fonction saveCrmField pour envoyer les options :
-export async function saveCrmField() {
-    const label = document.getElementById('new-field-label').value.trim();
-    const type = document.getElementById('new-field-type').value;
-    const optionsRaw = document.getElementById('new-field-options').value;
-
-    if (!label) return;
-
-    const key_name = label.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '_');
-
-    try {
-        await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/save-crm-field`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
-                label, 
-                key_name, 
-                field_type: type,
-                options: type === 'select' ? optionsRaw : null // Envoie la chaîne de texte (le backend la coupera)
-            })
-        });
-        Swal.fire("Champ créé !", "", "success").then(() => initCRM());
-    } catch (e) { Swal.fire("Erreur", e.message, "error"); }
-}
