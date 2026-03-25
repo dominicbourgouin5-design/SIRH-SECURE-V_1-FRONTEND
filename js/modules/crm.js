@@ -405,7 +405,6 @@ export async function addInteraction(leadId) {
 // ============================================================
 // 7. LE "NO-CODE BUILDER" (Configuration des champs)
 // ============================================================
-
 export async function openCrmSettings() {
     // 1. Sécurité : Seul un Admin peut modifier la structure
     if (!AppState.currentUser.permissions.can_manage_config) {
@@ -419,7 +418,7 @@ export async function openCrmSettings() {
             <div class="flex justify-between items-center p-3 bg-white border border-slate-200 rounded-xl mb-2 shadow-sm">
                 <div>
                     <span class="font-bold text-xs text-slate-800">${f.label}</span>
-                    <span class="text-[9px] text-slate-400 font-mono ml-2">(${f.key_name})</span>
+                    <span class="text-[9px] text-slate-400 font-mono ml-2">(${f.key_name}) ${f.field_type === 'select' ? '🔘' : ''}</span>
                 </div>
                 <span class="bg-indigo-50 text-indigo-600 px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border border-indigo-100">${f.field_type}</span>
             </div>
@@ -428,7 +427,7 @@ export async function openCrmSettings() {
         fieldsHtml = '<div class="p-4 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-center text-slate-400 text-xs italic">Aucun champ personnalisé créé.</div>';
     }
 
-    // 3. Modale de Configuration
+    // 3. Modale de Configuration Premium
     Swal.fire({
         title: '<div class="text-left text-xl font-black uppercase tracking-tight text-slate-800"><i class="fa-solid fa-sliders text-sky-500 mr-2"></i> Configuration CRM</div>',
         html: `
@@ -439,24 +438,31 @@ export async function openCrmSettings() {
                 </div>
 
                 <div class="p-6 bg-sky-50 rounded-2xl border border-sky-100 relative overflow-hidden">
-                    <!-- Déco visuelle -->
                     <i class="fa-solid fa-wand-magic-sparkles absolute -right-4 -bottom-4 text-6xl text-sky-500 opacity-10"></i>
                     
                     <p class="text-[10px] font-black text-sky-600 uppercase tracking-widest mb-4 relative z-10">Créer une nouvelle colonne</p>
                     
                     <div class="relative z-10 space-y-4">
                         <div>
-                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1 ml-1">Nom (ex: Budget Estimé)</label>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1 ml-1">Nom (ex: Source du Lead)</label>
                             <input id="new-field-label" class="w-full p-3 bg-white border border-sky-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-sky-500 shadow-sm" placeholder="Nom du champ...">
                         </div>
                         
                         <div>
                             <label class="block text-[9px] font-black text-slate-400 uppercase mb-1 ml-1">Type de donnée</label>
-                            <select id="new-field-type" class="w-full p-3 bg-white border border-sky-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-sky-500 shadow-sm cursor-pointer">
-                                <option value="text">Texte libre (Notes, Ville...)</option>
-                                <option value="number">Nombre (Montant, Quantité...)</option>
-                                <option value="date">Date (Échéance, RDV...)</option>
+                            <select id="new-field-type" onchange="window.toggleOptionsInput(this.value)" class="w-full p-3 bg-white border border-sky-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-sky-500 shadow-sm cursor-pointer">
+                                <option value="text">Texte libre</option>
+                                <option value="number">Nombre / Budget</option>
+                                <option value="date">Date / RDV</option>
+                                <option value="select">🔘 Menu Déroulant (Sélecteur)</option>
                             </select>
+                        </div>
+
+                        <!-- 💥 ZONE DYNAMIQUE POUR LES OPTIONS 💥 -->
+                        <div id="options-config-area" class="hidden animate-fadeIn space-y-2">
+                            <label class="block text-[9px] font-black text-orange-600 uppercase mb-1 ml-1">Choix du menu (séparés par des virgules)</label>
+                            <textarea id="new-field-options" rows="2" class="w-full p-3 bg-white border border-orange-200 rounded-xl text-[10px] font-bold outline-none focus:ring-2 focus:ring-orange-400 shadow-sm" placeholder="Ex: Client VIP, Prospect, Litige..."></textarea>
+                            <p class="text-[8px] text-slate-400 italic">Le système créera un bouton pour chaque choix.</p>
                         </div>
 
                         <button onclick="window.saveCrmField()" class="w-full py-4 mt-2 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-sky-500 transition-all active:scale-95">
@@ -472,6 +478,8 @@ export async function openCrmSettings() {
         customClass: { popup: 'rounded-[2rem]' }
     });
 }
+
+
 
 export async function saveCrmField() {
     const label = document.getElementById('new-field-label').value.trim();
@@ -513,4 +521,40 @@ export async function saveCrmField() {
     } catch (e) {
         Swal.fire("Erreur", e.message, "error");
     }
+}
+
+
+
+
+
+// Affiche ou cache le champ des options selon le type choisi
+window.toggleOptionsInput = (type) => {
+    const area = document.getElementById('options-config-area');
+    if (type === 'select') area.classList.remove('hidden');
+    else area.classList.add('hidden');
+};
+
+// Modifie la fonction saveCrmField pour envoyer les options :
+export async function saveCrmField() {
+    const label = document.getElementById('new-field-label').value.trim();
+    const type = document.getElementById('new-field-type').value;
+    const optionsRaw = document.getElementById('new-field-options').value;
+
+    if (!label) return;
+
+    const key_name = label.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '_');
+
+    try {
+        await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/save-crm-field`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                label, 
+                key_name, 
+                field_type: type,
+                options: type === 'select' ? optionsRaw : null // Envoie la chaîne de texte (le backend la coupera)
+            })
+        });
+        Swal.fire("Champ créé !", "", "success").then(() => initCRM());
+    } catch (e) { Swal.fire("Erreur", e.message, "error"); }
 }
