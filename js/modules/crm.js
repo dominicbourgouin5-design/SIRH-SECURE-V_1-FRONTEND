@@ -325,19 +325,22 @@ export async function saveLeadData(id) {
     }
 }
 
-// --- 6. AJOUTER UNE INTERACTION (Note, Appel, etc.) ---
 // --- AJOUTER INTERACTION OU ENVOYER EMAIL ---
+// --- 6. AJOUTER UNE INTERACTION (Note, Appel, etc.) ---
 export async function addInteraction(leadId) {
-    const type = document.getElementById('interaction-type').value;
     const text = document.getElementById('interaction-text').value;
+    const type = document.getElementById('interaction-type').value;
 
-if (type === 'EMAIL') {
+    // 💥 FIX : On doit récupérer les données du prospect pour avoir son email
+    const lead = AppState.crmLeads.find(l => l.id === leadId);
+
+    if (type === 'EMAIL') {
         const { value: emailData } = await Swal.fire({
             title: 'Rédiger un message',
             html: `
                 <div class="text-left">
                     <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Destinataire</label>
-                    <input id="swal-mail-to" class="swal2-input !mt-1" value="${lead.data.email || ''}" placeholder="email@client.com">
+                    <input id="swal-mail-to" class="swal2-input !mt-1" value="${(lead && lead.data) ? (lead.data.email || '') : ''}" placeholder="email@client.com">
                     
                     <label class="text-[10px] font-black text-slate-400 uppercase ml-1 mt-4 block">Sujet</label>
                     <input id="swal-mail-sub" class="swal2-input !mt-1" placeholder="Ex: Suite à notre rencontre...">
@@ -345,12 +348,15 @@ if (type === 'EMAIL') {
             `,
             confirmButtonText: 'Envoyer maintenant',
             showCancelButton: true,
+            confirmButtonColor: '#0f172a',
             preConfirm: () => {
-                return {
-                    to: document.getElementById('swal-mail-to').value,
-                    subject: document.getElementById('swal-mail-sub').value,
-                    content: document.getElementById('interaction-text').value // Utilise le texte déjà tapé dans l'input
+                const to = document.getElementById('swal-mail-to').value;
+                const sub = document.getElementById('swal-mail-sub').value;
+                if (!to || !sub) {
+                    Swal.showValidationMessage('Email et Sujet obligatoires');
+                    return false;
                 }
+                return { to, subject: sub, content: text };
             }
         });
 
@@ -368,23 +374,33 @@ if (type === 'EMAIL') {
                         agent_name: AppState.currentUser.nom 
                     })
                 });
-                Swal.fire("Succès", "L'email a été envoyé au client.", "success");
+                Swal.fire("Envoyé !", "Le mail est parti et a été tracé dans l'historique.", "success");
                 initCRM().then(() => openLeadModal(leadId));
-            } catch(e) { Swal.fire("Erreur", "Échec de l'envoi", "error"); }
+            } catch(e) { 
+                Swal.fire("Erreur", "L'envoi a échoué. Vérifiez vos clés API Brevo.", "error"); 
+            }
         }
     } else {
         // Logique Note/Appel classique
         if (!text) return;
         try {
             await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/add-interaction`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ lead_id: leadId, type: type, content: text, agent_name: AppState.currentUser.nom })
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lead_id: leadId,
+                    type: type,
+                    content: text,
+                    agent_name: AppState.currentUser.nom
+                })
             });
+            // Recharger pour voir la nouvelle note
             initCRM().then(() => openLeadModal(leadId));
-        } catch(e) { Swal.fire("Erreur", "Impossible d'ajouter la note", "error"); }
+        } catch(e) {
+            Swal.fire("Erreur", "Impossible d'ajouter la note", "error");
+        }
     }
 }
-
 
 // ============================================================
 // 7. LE "NO-CODE BUILDER" (Configuration des champs)
