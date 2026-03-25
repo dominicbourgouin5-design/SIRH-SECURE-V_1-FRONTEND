@@ -27,24 +27,34 @@ export async function initCRM() {
 
 // --- 2. AFFICHAGE DES CARTES ---
 export function renderKanban() {
-    const cols = {
-        'Nouveau': document.getElementById('kanban-nouveau'),
-        'Negociation': document.getElementById('kanban-nego'),
-        'Gagné': document.getElementById('kanban-gagne')
-    };
-
-    // Vider les colonnes
+    const cols = { 'Nouveau': document.getElementById('kanban-nouveau'), 'Negociation': document.getElementById('kanban-nego'), 'Gagné': document.getElementById('kanban-gagne') };
     Object.values(cols).forEach(c => { if(c) c.innerHTML = ''; });
     let counts = { 'Nouveau': 0, 'Negociation': 0, 'Gagné': 0 };
+    
+    // --- 💥 NOUVEAU : CALCUL DU PIPELINE COMMERCIAL ---
+    let totalValue = 0, negoValue = 0, wonValue = 0;
 
     AppState.crmLeads.forEach(lead => {
         const col = cols[lead.status] || cols['Nouveau'];
         counts[lead.status] = (counts[lead.status] || 0) + 1;
 
-        // Date formattée
+        // Détection intelligente du montant (On cherche un champ contenant 'budget', 'montant', 'ca', etc.)
+        let leadValue = 0;
+        if (lead.data) {
+            for (let key in lead.data) {
+                if (key.includes('budget') || key.includes('montant') || key.includes('chiffre') || key.includes('valeur')) {
+                    leadValue = parseFloat(lead.data[key]) || 0;
+                    break;
+                }
+            }
+        }
+        totalValue += leadValue;
+        if (lead.status === 'Negociation') negoValue += leadValue;
+        if (lead.status === 'Gagné') wonValue += leadValue;
+
+        // Rendu de la carte (inchangé)
         const date = new Date(lead.updated_at || lead.created_at).toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
         const initial = lead.nom_client.charAt(0).toUpperCase();
-
         const card = document.createElement('div');
         card.className = "bg-white p-4 rounded-xl border border-slate-200 shadow-sm cursor-grab hover:shadow-md transition-all active:cursor-grabbing relative group";
         card.dataset.id = lead.id;
@@ -54,15 +64,31 @@ export function renderKanban() {
                 <button onclick="window.openLeadModal('${lead.id}')" class="text-slate-300 hover:text-blue-500 bg-slate-50 px-2 py-1 rounded transition-colors"><i class="fa-solid fa-expand text-[10px]"></i></button>
             </div>
             <h4 class="font-black text-sm text-slate-800 leading-tight mb-1">${lead.nom_client}</h4>
-            <p class="text-[10px] text-slate-400 font-medium flex items-center gap-1"><i class="fa-regular fa-clock"></i> Maj: ${date}</p>
+            <p class="text-[10px] font-bold text-emerald-600 mb-2">${leadValue > 0 ? new Intl.NumberFormat('fr-FR').format(leadValue) + ' CFA' : ''}</p>
+            <p class="text-[9px] text-slate-400 font-medium flex items-center gap-1"><i class="fa-regular fa-clock"></i> Maj: ${date}</p>
         `;
         col.appendChild(card);
     });
 
-    // Mettre à jour les compteurs
     document.getElementById('count-nouveau').innerText = counts['Nouveau'];
     document.getElementById('count-nego').innerText = counts['Negociation'];
     document.getElementById('count-gagne').innerText = counts['Gagné'];
+
+    // INJECTION DES STATS EN HAUT DE L'ÉCRAN
+    let dashContainer = document.getElementById('crm-dashboard-stats');
+    if (!dashContainer) {
+        dashContainer = document.createElement('div');
+        dashContainer.id = 'crm-dashboard-stats';
+        dashContainer.className = "grid grid-cols-3 gap-4 mb-6";
+        document.getElementById('view-crm').insertBefore(dashContainer, document.querySelector('.flex-1.overflow-x-auto'));
+    }
+    
+    const fmt = (val) => new Intl.NumberFormat('fr-FR').format(val) + ' F';
+    dashContainer.innerHTML = `
+        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Valeur Globale</p><h3 class="text-xl font-black text-slate-800">${fmt(totalValue)}</h3></div>
+        <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 shadow-sm"><p class="text-[9px] font-black text-blue-500 uppercase tracking-widest">En Négociation</p><h3 class="text-xl font-black text-blue-700">${fmt(negoValue)}</h3></div>
+        <div class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 shadow-sm"><p class="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Chiffre Gagné</p><h3 class="text-xl font-black text-emerald-700">${fmt(wonValue)}</h3></div>
+    `;
 }
 
 // --- 3. LE GLISSER-DÉPOSER (SORTABLE.JS) ---
@@ -230,33 +256,37 @@ export async function saveLeadData(id) {
 }
 
 // --- 6. AJOUTER UNE INTERACTION (Note, Appel, etc.) ---
+// --- AJOUTER INTERACTION OU ENVOYER EMAIL ---
 export async function addInteraction(leadId) {
-    const text = document.getElementById('interaction-text').value;
     const type = document.getElementById('interaction-type').value;
+    const text = document.getElementById('interaction-text').value;
 
-    if (!text) return;
+    if (type === 'EMAIL') {
+        const email = prompt("Adresse email du client :");
+        const subject = prompt("Sujet de l'email :");
+        if (!email || !subject || !text) return Swal.fire("Erreur", "L'email, le sujet et le texte sont obligatoires", "warning");
 
-    try {
-        await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/add-interaction`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                lead_id: leadId,
-                type: type,
-                content: text,
-                agent_name: AppState.currentUser.nom
-            })
-        });
-        
-        // On rafraichit la fiche
-        initCRM().then(() => openLeadModal(leadId));
-    } catch(e) {
-        Swal.fire("Erreur", "Impossible d'ajouter la note", "error");
+        Swal.fire({ title: 'Envoi en cours...', didOpen: () => Swal.showLoading() });
+        try {
+            await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/send-email`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lead_id: leadId, to_email: email, subject: subject, content: text, agent_name: AppState.currentUser.nom })
+            });
+            Swal.fire("Envoyé !", "Le mail est parti et a été tracé dans l'historique.", "success");
+            initCRM().then(() => openLeadModal(leadId));
+        } catch(e) { Swal.fire("Erreur", "L'envoi a échoué.", "error"); }
+    } else {
+        // Logique Note/Appel classique
+        if (!text) return;
+        try {
+            await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/add-interaction`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ lead_id: leadId, type: type, content: text, agent_name: AppState.currentUser.nom })
+            });
+            initCRM().then(() => openLeadModal(leadId));
+        } catch(e) { Swal.fire("Erreur", "Impossible d'ajouter la note", "error"); }
     }
 }
-
-
-
 
 
 // ============================================================
