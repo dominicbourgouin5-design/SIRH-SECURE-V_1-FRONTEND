@@ -28,139 +28,216 @@ export async function initCRM() {
  /**
  * Rendu complet du Kanban CRM avec Calcul de Valeur et Graphique
  */
-export function renderKanban() {
-    // 1. INITIALISATION DES COLONNES
-    const cols = { 
-        'Nouveau': document.getElementById('kanban-nouveau'), 
-        'Negociation': document.getElementById('kanban-nego'), 
-        'Gagné': document.getElementById('kanban-gagne') 
-    };
+/**
+ * Rendu dynamique du Pipeline CRM (Kanban Haute Performance)
+ */
+export async function renderKanban() {
+    const boardContainer = document.querySelector('#view-crm .flex.gap-6');
+    if (!boardContainer) return;
 
-    // Nettoyage des colonnes avant rendu
-    Object.values(cols).forEach(c => { if(c) c.innerHTML = ''; });
+    // 1. CHARGEMENT DES ÉTAPES (STAGES) DEPUIS LE SERVEUR
+    const resStages = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/stages`);
+    const stages = await resStages.json();
+    AppState.crmStages = stages;
 
-    let counts = { 'Nouveau': 0, 'Negociation': 0, 'Gagné': 0 };
-    let newValue = 0, negoValue = 0, wonValue = 0;
+    // Nettoyage du board
+    boardContainer.innerHTML = '';
 
-    // 2. BOUCLE SUR LES LEADS
-    AppState.crmLeads.forEach(lead => {
-        const col = cols[lead.status] || cols['Nouveau'];
-        counts[lead.status] = (counts[lead.status] || 0) + 1;
+    // Variables pour les statistiques globales
+    let totalValue = 0;
+    let stageStats = {}; // Format: { "Stage Name": { count: 0, value: 0, color: "" } }
 
-        // Détection intelligente du montant (cherche les clés 'budget', 'montant', 'ca', 'valeur')
-        let leadValue = 0;
-        if (lead.data) {
-            for (let key in lead.data) {
-                const k = key.toLowerCase();
-                if (k.includes('budget') || k.includes('montant') || k.includes('ca') || k.includes('valeur')) {
-                    leadValue = parseFloat(lead.data[key]) || 0;
-                    break;
-                }
-            }
-        }
+    // 2. CRÉATION DYNAMIQUE DES COLONNES
+    stages.forEach(stage => {
+        stageStats[stage.label] = { count: 0, value: 0, color: stage.color, id: stage.id };
 
-        // Accumulation des valeurs par statut
-        if (lead.status === 'Gagné') wonValue += leadValue;
-        else if (lead.status === 'Negociation') negoValue += leadValue;
-        else newValue += leadValue;
+        const colHtml = `
+            <div class="w-80 flex flex-col h-full animate-fadeIn">
+                <!-- En-tête de colonne stylisé -->
+                <div class="flex justify-between items-center p-3 rounded-t-2xl border border-b-0" 
+                     style="background-color: ${stage.color}10; border-color: ${stage.color}30">
+                    <div class="flex items-center gap-2">
+                        <div class="w-2 h-2 rounded-full" style="background-color: ${stage.color}"></div>
+                        <span class="font-black text-[10px] uppercase tracking-widest" style="color: ${stage.color}">${stage.label}</span>
+                    </div>
+                    <span id="count-${stage.id}" class="bg-white text-slate-400 text-[10px] font-bold px-2 py-0.5 rounded-md shadow-sm border border-slate-100">0</span>
+                </div>
 
-        // Construction de la carte HTML
-        const date = new Date(lead.updated_at || lead.created_at).toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
-        const initial = lead.nom_client ? lead.nom_client.charAt(0).toUpperCase() : '?';
-        const fmtLeadValue = new Intl.NumberFormat('fr-FR').format(leadValue);
+                <!-- Zone de dépôt (Sortable) -->
+                <div id="kanban-${stage.id}" data-status="${stage.label}" 
+                     class="kanban-col flex-1 bg-slate-50/30 border border-slate-200 rounded-b-2xl p-3 space-y-3 overflow-y-auto custom-scroll min-h-[250px]">
+                    <!-- Les cartes seront injectées ici -->
+                </div>
 
-        const card = document.createElement('div');
-        card.className = "bg-white p-4 rounded-xl border border-slate-200 shadow-sm cursor-grab hover:shadow-md transition-all active:cursor-grabbing relative group animate-fadeIn";
-        card.dataset.id = lead.id;
-        card.innerHTML = `
-            <div class="flex justify-between items-start mb-3">
-                <div class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold flex items-center justify-center text-xs border border-slate-200">${initial}</div>
-                <button onclick="window.openLeadModal('${lead.id}')" class="text-slate-300 hover:text-blue-500 bg-slate-50 px-2 py-1 rounded transition-colors">
-                    <i class="fa-solid fa-expand text-[10px]"></i>
-                </button>
-            </div>
-            <h4 class="font-black text-sm text-slate-800 leading-tight mb-1 truncate" title="${lead.nom_client}">${lead.nom_client}</h4>
-            <div class="flex flex-col gap-1">
-                ${leadValue > 0 ? `<p class="text-[11px] font-black text-emerald-600">${fmtLeadValue} CFA</p>` : ''}
-                <p class="text-[9px] text-slate-400 font-medium flex items-center gap-1">
-                    <i class="fa-regular fa-clock"></i> Màj: ${date}
-                </p>
+                <!-- Pied de colonne : Total Financier -->
+                <div class="p-2 text-right">
+                    <span id="value-${stage.id}" class="text-[10px] font-black text-slate-400 uppercase tracking-tighter">0 F</span>
+                </div>
             </div>
         `;
-        col.appendChild(card);
+        boardContainer.insertAdjacentHTML('beforeend', colHtml);
     });
 
-    // 3. MISE À JOUR DES COMPTEURS DE COLONNES
-    if (document.getElementById('count-nouveau')) document.getElementById('count-nouveau').innerText = counts['Nouveau'];
-    if (document.getElementById('count-nego')) document.getElementById('count-nego').innerText = counts['Negociation'];
-    if (document.getElementById('count-gagne')) document.getElementById('count-gagne').innerText = counts['Gagné'];
+    // 3. DISTRIBUTION DES LEADS DANS LES COLONNES
+    const today = new Date().toISOString().split('T')[0];
 
-    // 4. INJECTION DU DASHBOARD FINANCIER (CARTES)
+    AppState.crmLeads.forEach(lead => {
+        // On trouve la colonne correspondante
+        const stage = stages.find(s => s.label === lead.status) || stages[0];
+        const colBody = document.getElementById(`kanban-${stage.id}`);
+
+        if (colBody) {
+            // Détection intelligente du budget
+            let leadValue = 0;
+            if (lead.data) {
+                for (let key in lead.data) {
+                    const k = key.toLowerCase();
+                    if (k.includes('budget') || k.includes('montant') || k.includes('ca') || k.includes('valeur')) {
+                        leadValue = parseFloat(lead.data[key]) || 0;
+                        break;
+                    }
+                }
+            }
+
+            // Mise à jour des stats
+            stageStats[stage.label].count++;
+            stageStats[stage.label].value += leadValue;
+            totalValue += leadValue;
+
+            // Création de la carte avec gestion des retards de relance
+            const nextRelance = lead.data.date_relance;
+            const isLate = nextRelance && nextRelance < today;
+
+            const card = createLeadCard(lead, leadValue, isLate);
+            colBody.appendChild(card);
+        }
+    });
+
+    // 4. MISE À JOUR DES COMPTEURS ET VALEURS DE COLONNES
+    stages.forEach(stage => {
+        const stats = stageStats[stage.label];
+        const countEl = document.getElementById(`count-${stage.id}`);
+        const valueEl = document.getElementById(`value-${stage.id}`);
+        if (countEl) countEl.innerText = stats.count;
+        if (valueEl) valueEl.innerText = new Intl.NumberFormat('fr-FR').format(stats.value) + ' F';
+    });
+
+    // 5. RENDU DU DASHBOARD GLOBAL (Cartes KPI + Graphique)
+    renderCrmDashboard(totalValue, stageStats, stages);
+
+    // 6. RÉINITIALISATION DU DRAG & DROP
+    initDragAndDrop();
+}
+
+/**
+ * Helper : Création d'une carte Lead stylisée (Style Odoo/SaaS)
+ */
+function createLeadCard(lead, value, isLate) {
+    const initial = lead.nom_client ? lead.nom_client.charAt(0).toUpperCase() : '?';
+    const dateMaj = new Date(lead.updated_at || lead.created_at).toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
+    
+    const card = document.createElement('div');
+    card.className = `bg-white p-4 rounded-xl border-2 ${isLate ? 'border-red-100 bg-red-50/5' : 'border-transparent'} shadow-sm hover:shadow-md transition-all active:cursor-grabbing cursor-grab relative group animate-fadeIn`;
+    card.dataset.id = lead.id;
+
+    card.innerHTML = `
+        <div class="flex justify-between items-start mb-2">
+            <div class="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center text-[10px] font-black border border-slate-700 shadow-sm">${initial}</div>
+            <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onclick="window.openLeadModal('${lead.id}')" class="p-1.5 text-slate-400 hover:text-blue-600 transition-colors" title="Ouvrir"><i class="fa-solid fa-expand"></i></button>
+                <button onclick="window.deleteLead('${lead.id}')" class="p-1.5 text-slate-400 hover:text-red-500 transition-colors" title="Supprimer"><i class="fa-solid fa-trash-can"></i></button>
+            </div>
+        </div>
+        
+        <h4 class="font-black text-xs text-slate-800 leading-tight mb-2 truncate" title="${lead.nom_client}">${lead.nom_client}</h4>
+        
+        <div class="flex justify-between items-center mb-3">
+            <span class="text-[10px] font-black ${isLate ? 'text-red-500' : 'text-emerald-600'}">
+                ${value > 0 ? new Intl.NumberFormat('fr-FR').format(value) + ' F' : '---'}
+            </span>
+            ${(lead.data.files && lead.data.files.length > 0) ? '<i class="fa-solid fa-paperclip text-[10px] text-slate-300"></i>' : ''}
+        </div>
+
+        <div class="pt-3 border-t border-slate-50 flex justify-between items-center">
+            <span class="text-[8px] text-slate-300 font-medium italic">Maj: ${dateMaj}</span>
+            ${isLate ? '<span class="text-[8px] font-black text-red-500 uppercase animate-pulse"><i class="fa-solid fa-clock"></i> RETARD</span>' : ''}
+        </div>
+    `;
+    return card;
+}
+
+/**
+ * Helper : Rendu du Dashboard Financier et Graphique Dynamique
+ */
+function renderCrmDashboard(totalValue, stageStats, stages) {
     let dashContainer = document.getElementById('crm-dashboard-stats');
     if (!dashContainer) {
         dashContainer = document.createElement('div');
         dashContainer.id = 'crm-dashboard-stats';
-        dashContainer.className = "grid grid-cols-3 gap-4 mb-6 animate-fadeIn";
+        dashContainer.className = "grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 animate-fadeIn";
         document.getElementById('view-crm').insertBefore(dashContainer, document.querySelector('.flex-1.overflow-x-auto'));
     }
-    
+
     const fmt = (val) => new Intl.NumberFormat('fr-FR').format(val) + ' F';
+    
+    // Identification de l'étape "Gagné" pour le KPI de droite
+    const wonStage = stages.find(s => s.label.toLowerCase().includes('gagn')) || { label: 'Gagné' };
+    const wonValue = stageStats[wonStage.label]?.value || 0;
+
     dashContainer.innerHTML = `
-        <div class="bg-white p-5 rounded-[1.5rem] border border-slate-100 shadow-sm relative overflow-hidden group">
-            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest relative z-10">Valeur Pipeline</p>
-            <h3 class="text-xl font-black text-slate-800 relative z-10">${fmt(newValue + negoValue + wonValue)}</h3>
-            <i class="fa-solid fa-chart-line absolute -right-2 -bottom-2 text-4xl text-slate-50 opacity-10 group-hover:scale-110 transition-transform"></i>
+        <div class="bg-slate-900 p-5 rounded-[1.5rem] text-white shadow-xl relative overflow-hidden group">
+            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest relative z-10">Valeur Totale Pipeline</p>
+            <h3 class="text-2xl font-black mt-1 relative z-10">${fmt(totalValue)}</h3>
+            <i class="fa-solid fa-vault absolute -right-2 -bottom-2 text-5xl opacity-10 group-hover:scale-110 transition-transform"></i>
         </div>
-        <div class="bg-blue-600 p-5 rounded-[1.5rem] text-white shadow-lg shadow-blue-200 relative overflow-hidden group">
-            <p class="text-[9px] font-black text-blue-100 uppercase tracking-widest relative z-10">En Négociation</p>
-            <h3 class="text-xl font-black relative z-10">${fmt(negoValue)}</h3>
-            <i class="fa-solid fa-comments-dollar absolute -right-2 -bottom-2 text-4xl text-white opacity-10 group-hover:rotate-12 transition-transform"></i>
+        <div class="bg-white p-5 rounded-[1.5rem] border border-slate-100 shadow-sm relative overflow-hidden group">
+            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Dossiers Actifs</p>
+            <h3 class="text-2xl font-black text-blue-600 mt-1">${AppState.crmLeads.length}</h3>
+            <i class="fa-solid fa-briefcase absolute -right-2 -bottom-2 text-5xl text-slate-50 group-hover:rotate-12 transition-transform"></i>
         </div>
         <div class="bg-emerald-500 p-5 rounded-[1.5rem] text-white shadow-lg shadow-emerald-200 relative overflow-hidden group">
-            <p class="text-[9px] font-black text-emerald-50 uppercase tracking-widest relative z-10">Chiffre Gagné</p>
-            <h3 class="text-xl font-black relative z-10">${fmt(wonValue)}</h3>
-            <i class="fa-solid fa-trophy absolute -right-2 -bottom-2 text-4xl text-white opacity-10 group-hover:-rotate-12 transition-transform"></i>
+            <p class="text-[9px] font-black text-emerald-100 uppercase tracking-widest">Chiffre Gagné</p>
+            <h3 class="text-2xl font-black mt-1">${fmt(wonValue)}</h3>
+            <i class="fa-solid fa-trophy absolute -right-2 -bottom-2 text-5xl opacity-20 group-hover:-rotate-12 transition-transform"></i>
         </div>
     `;
 
-    // 5. INJECTION DU GRAPHIQUE (CHART.JS)
-    let chartContainer = document.getElementById('crm-chart-area');
-    if (!chartContainer) {
-        chartContainer = document.createElement('div');
-        chartContainer.id = 'crm-chart-area';
-        chartContainer.className = "bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm mb-8 animate-fadeIn";
-        chartContainer.innerHTML = `
-            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Répartition de la valeur du Pipeline</p>
-            <div style="height: 180px;"><canvas id="crmValueChart"></canvas></div>
-        `;
-        document.getElementById('view-crm').insertBefore(chartContainer, document.querySelector('.flex-1.overflow-x-auto'));
+    // Graphique Chart.js
+    let chartArea = document.getElementById('crm-chart-area');
+    if (!chartArea) {
+        chartArea = document.createElement('div');
+        chartArea.id = 'crm-chart-area';
+        chartArea.className = "bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm mb-8 animate-fadeIn";
+        chartArea.innerHTML = `<div style="height: 200px;"><canvas id="crmDynamicChart"></canvas></div>`;
+        document.getElementById('view-crm').insertBefore(chartArea, document.querySelector('.flex-1.overflow-x-auto'));
     }
 
-    const ctx = document.getElementById('crmValueChart').getContext('2d');
+    const ctx = document.getElementById('crmDynamicChart').getContext('2d');
     if (window.myCrmChart) window.myCrmChart.destroy();
 
     window.myCrmChart = new Chart(ctx, {
         type: 'bar',
         data: {
-            labels: ['Nouveaux', 'En Négociation', 'Gagnés'],
+            labels: stages.map(s => s.label),
             datasets: [{
-                data: [newValue, negoValue, wonValue],
-                backgroundColor: ['#94a3b8', '#3b82f6', '#10b981'],
-                borderRadius: 12,
-                barThickness: 50
+                data: stages.map(s => stageStats[s.label]?.value || 0),
+                backgroundColor: stages.map(s => s.color + 'CC'),
+                borderColor: stages.map(s => s.color),
+                borderWidth: 2,
+                borderRadius: 8,
+                barThickness: 45
             }]
         },
         options: {
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
             scales: {
-                y: { beginAtZero: true, grid: { display: false }, ticks: { display: false }, border: { display: false } },
-                x: { grid: { display: false }, border: { display: false }, ticks: { font: { size: 10, weight: 'bold' } } }
+                y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { display: false } },
+                x: { grid: { display: false }, ticks: { font: { size: 9, weight: 'bold' } } }
             }
         }
     });
 }
-
 // --- 3. LE GLISSER-DÉPOSER (SORTABLE.JS) ---
 export function initDragAndDrop() {
     const columns = document.querySelectorAll('.kanban-col');
@@ -196,104 +273,183 @@ export function initDragAndDrop() {
     });
 }
 
-export async function openLeadModal(id = null) {
-    const lead = id ? AppState.crmLeads.find(l => l.id === id) : { data: {}, history: [] };
-    
-    // 1. GÉNÉRATION DES CHAMPS PROFESSIONNELS
-    let dynamicHtml = '';
-    AppState.crmFields.forEach(f => {
-        const val = lead.data[f.key_name] || '';
-        let fieldWidget = '';
 
-        // Widget dynamique selon le type
+
+
+/**
+ * Ouvre la fiche complète d'un prospect (Edition / Historique / Documents)
+ */
+export async function openLeadModal(id = null) {
+    // 1. Initialisation des données
+    const lead = id ? AppState.crmLeads.find(l => l.id === id) : { 
+        nom_client: '', 
+        status: 'Nouveau', 
+        assigned_to: null, 
+        data: { files: [] }, 
+        history: [] 
+    };
+
+    // 2. Génération de la liste des commerciaux (Employés) pour l'assignation
+    const employees = AppState.employees || [];
+    const assignmentHtml = `
+        <div class="mb-6">
+            <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Commercial Assigné</label>
+            <select id="crm-assign" class="w-full p-3 bg-white border-2 border-slate-200 rounded-xl text-xs font-bold outline-none focus:border-blue-500 transition-all">
+                <option value="">-- Non assigné --</option>
+                ${employees.map(e => `<option value="${e.id}" ${lead.assigned_to === e.id ? 'selected' : ''}>${e.nom}</option>`).join('')}
+            </select>
+        </div>
+    `;
+
+    // 3. Génération des champs dynamiques (No-Code)
+    let dynamicHtml = '';
+    const fields = AppState.crmFields || [];
+    fields.forEach(f => {
+        const val = (lead.data && lead.data[f.key_name]) || '';
+        let widget = '';
+
         if (f.field_type === 'select') {
             const opts = f.options || [];
-            fieldWidget = `<select id="dyn-${f.key_name}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">
+            widget = `<select id="dyn-${f.key_name}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">
                 <option value="">-- Choisir --</option>
                 ${opts.map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('')}
             </select>`;
         } else if (f.field_type === 'date') {
-            fieldWidget = `<input type="date" id="dyn-${f.key_name}" value="${val}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">`;
+            widget = `<input type="date" id="dyn-${f.key_name}" value="${val}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold">`;
+        } else if (f.field_type === 'number') {
+            widget = `<input type="number" id="dyn-${f.key_name}" value="${val}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="0">`;
         } else {
-            // Par défaut : Texte avec icône de copie
-            fieldWidget = `
-                <div class="relative">
-                    <input id="dyn-${f.key_name}" value="${val}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold pr-10">
-                    <button onclick="navigator.clipboard.writeText('${val}')" class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-300 hover:text-blue-500"><i class="fa-solid fa-copy"></i></button>
-                </div>`;
+            widget = `<input type="text" id="dyn-${f.key_name}" value="${val}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold" placeholder="${f.label}">`;
         }
 
         dynamicHtml += `
             <div class="mb-4">
                 <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">${f.label}</label>
-                ${fieldWidget}
-            </div>
-        `;
+                ${widget}
+            </div>`;
     });
 
-    // 2. RENDU DE LA MODALE "DASHBOARD CLIENT"
+    // 4. Génération de la liste des documents joints
+    const files = (lead.data && lead.data.files) || [];
+    const filesHtml = files.map(file => {
+        const isImg = /\.(jpg|jpeg|png|webp)$/i.test(file.name);
+        return `
+            <div class="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2 group hover:bg-white hover:border-blue-200 transition-all">
+                <div class="flex items-center gap-3 overflow-hidden">
+                    <i class="fa-solid ${isImg ? 'fa-file-image text-blue-500' : 'fa-file-pdf text-red-500'}"></i>
+                    <a href="${file.url}" target="_blank" class="text-[10px] font-black text-slate-700 truncate hover:text-blue-600">${file.name}</a>
+                </div>
+                <span class="text-[8px] text-slate-300 font-mono">${file.size || ''}</span>
+            </div>`;
+    }).join('');
+
+    // 5. Affichage de la Modale Split-View
     Swal.fire({
         title: null,
-        width: '1200px', // Très large pour le confort
-        customClass: { popup: 'rounded-[2rem] p-0 overflow-hidden' },
+        width: '1200px',
+        customClass: { popup: 'rounded-[2.5rem] p-0 overflow-hidden' },
         showConfirmButton: false,
         showCloseButton: true,
         html: `
-            <div class="flex flex-col md:flex-row h-[750px] text-left bg-white">
+            <div class="flex flex-col md:flex-row h-[85vh] max-h-[800px] text-left bg-white">
                 
-                <!-- COLONNE 1 : RÉSUMÉ & CHAMPS (40%) -->
+                <!-- GAUCHE : INFOS & CHAMPS (40%) -->
                 <div class="w-full md:w-[40%] p-10 border-r border-slate-100 overflow-y-auto custom-scroll">
-                    <div class="mb-8">
-                        <div class="flex items-center gap-4 mb-4">
-                            <div class="w-16 h-16 rounded-2xl bg-slate-900 flex items-center justify-center text-white text-2xl font-black">${lead.nom_client ? lead.nom_client.charAt(0).toUpperCase() : '+'}</div>
-                            <div>
-                                <h2 class="text-2xl font-black text-slate-800 uppercase tracking-tight">${lead.nom_client || 'Nouveau Prospect'}</h2>
-                                <span class="px-3 py-1 rounded-full bg-blue-100 text-blue-600 text-[10px] font-black uppercase">${lead.status || 'En attente'}</span>
+                    <div class="flex items-center gap-4 mb-8">
+                        <div class="w-16 h-16 rounded-2xl bg-slate-900 flex items-center justify-center text-white text-2xl font-black shadow-lg">
+                            ${lead.nom_client ? lead.nom_client.charAt(0).toUpperCase() : '+'}
+                        </div>
+                        <div>
+                            <h2 class="text-2xl font-black text-slate-800 uppercase tracking-tight">${lead.nom_client || 'Nouveau Lead'}</h2>
+                            <div class="flex gap-2 mt-1">
+                                <span class="px-3 py-1 rounded-full bg-blue-100 text-blue-600 text-[9px] font-black uppercase">${lead.status}</span>
+                                ${lead.data.telephone ? `<button onclick="window.open('https://wa.me/${lead.data.telephone.replace(/\s/g, '')}')" class="px-3 py-1 rounded-full bg-emerald-100 text-emerald-600 text-[9px] font-black uppercase hover:bg-emerald-600 hover:text-white transition-all"><i class="fa-brands fa-whatsapp mr-1"></i> WhatsApp</button>` : ''}
                             </div>
                         </div>
-                        <input id="crm-nom" value="${lead.nom_client || ''}" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-black outline-none focus:border-blue-500 mb-6" placeholder="Nom de l'entreprise ou contact...">
-                        
-                        <div class="space-y-2">
-                            ${dynamicHtml}
-                        </div>
-
-                        <button onclick="window.saveLeadData('${id || ''}')" class="w-full mt-8 py-4 bg-blue-600 text-white rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-xl shadow-blue-200 hover:bg-blue-700 transition-all">
-                            Sauvegarder les modifications
-                        </button>
                     </div>
+
+                    <!-- Champ Principal -->
+                    <div class="mb-8">
+                        <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Nom du Client / Entreprise *</label>
+                        <input id="crm-nom" value="${lead.nom_client}" class="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl text-sm font-black outline-none focus:border-blue-500 shadow-inner">
+                    </div>
+
+                    <!-- Assignation -->
+                    ${assignmentHtml}
+
+                    <!-- Champs Dynamiques -->
+                    <div class="space-y-2 mb-8">${dynamicHtml}</div>
+
+                    <!-- Documents -->
+                    <div class="mt-10 pt-8 border-t border-slate-100">
+                        <div class="flex justify-between items-center mb-4">
+                            <p class="text-[10px] font-black text-slate-900 uppercase tracking-widest">Documents & Pièces Jointes</p>
+                            <button onclick="window.uploadCrmFile('${id}')" class="text-blue-600 font-black text-[9px] uppercase hover:underline">+ Ajouter</button>
+                        </div>
+                        ${filesHtml || '<p class="text-[9px] text-slate-300 italic text-center py-4 border-2 border-dashed rounded-xl">Aucun document</p>'}
+                    </div>
+
+                    <button onclick="window.saveLeadData('${id || ''}')" class="w-full mt-10 py-5 bg-slate-900 text-white rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] shadow-xl hover:bg-blue-600 transition-all active:scale-95">
+                        <i class="fa-solid fa-floppy-disk mr-2"></i> Enregistrer la fiche
+                    </button>
                 </div>
 
-                <!-- COLONNE 2 : CENTRE DE COMMUNICATION (60%) -->
+                <!-- DROITE : TIMELINE D'INTERACTIONS (60%) -->
                 <div class="flex-1 bg-slate-50/50 flex flex-col h-full">
-                    <!-- Tabs de communication -->
-                    <div class="flex border-b border-slate-100 bg-white">
-                        <button class="flex-1 p-5 text-[10px] font-black uppercase tracking-widest text-blue-600 border-b-2 border-blue-600"><i class="fa-solid fa-clock-rotate-left mr-2"></i> Historique</button>
-                        <button class="flex-1 p-5 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-blue-500"><i class="fa-solid fa-envelope mr-2"></i> Emails</button>
-                        <button class="flex-1 p-5 text-[10px] font-black uppercase tracking-widest text-slate-400 hover:text-emerald-500"><i class="fa-solid fa-comment-dots mr-2"></i> WhatsApp</button>
+                    <div class="bg-white p-5 border-b border-slate-200 flex justify-between items-center">
+                        <span class="text-[10px] font-black uppercase text-slate-400 tracking-widest"><i class="fa-solid fa-clock-rotate-left mr-2"></i> Historique des échanges</span>
+                        ${id ? `<button onclick="window.deleteLead('${id}')" class="text-red-300 hover:text-red-500 transition-colors"><i class="fa-solid fa-trash-can"></i></button>` : ''}
                     </div>
 
-                    <!-- Flux d'activités -->
-                    <div class="flex-1 p-8 overflow-y-auto custom-scroll space-y-4" id="crm-history-wall">
-                        ${renderHistoryWall(lead.history)}
+                    <div class="flex-1 p-8 overflow-y-auto custom-scroll space-y-4">
+                        ${renderHistoryWall(lead.history || [])}
                     </div>
 
-                    <!-- Zone de saisie rapide -->
-                    <div class="p-6 bg-white border-t border-slate-100">
+                    <!-- Saisie rapide -->
+                    <div class="p-6 bg-white border-t border-slate-200">
                         <div class="flex gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-200 shadow-inner">
                             <select id="interaction-type" class="bg-transparent border-none text-[10px] font-black uppercase outline-none px-2 text-slate-500">
                                 <option value="NOTE">📝 Note</option>
                                 <option value="APPEL">📞 Appel</option>
-                                <option value="RDV">🤝 RDV</option>
+                                <option value="EMAIL">📧 Email</option>
                             </select>
-                            <input id="interaction-text" class="flex-1 bg-transparent border-none text-sm outline-none py-2" placeholder="Taper un compte-rendu...">
-                            <button onclick="window.addInteraction('${id}')" class="w-10 h-10 bg-slate-900 text-white rounded-xl shadow-lg hover:bg-blue-600 transition-all"><i class="fa-solid fa-paper-plane"></i></button>
+                            <input id="interaction-text" class="flex-1 bg-transparent border-none text-sm outline-none py-2" placeholder="Notez votre dernier échange...">
+                            <button onclick="window.addInteraction('${id}')" class="w-12 h-12 bg-slate-900 text-white rounded-xl shadow-lg hover:bg-blue-600 transition-all flex items-center justify-center"><i class="fa-solid fa-paper-plane"></i></button>
                         </div>
                     </div>
                 </div>
-            </div>
-        `
+            </div>`
     });
 }
+
+/**
+ * Fonction Helper pour le rendu de la Timeline (Historique)
+ */
+function renderHistoryWall(history) {
+    if (!history || history.length === 0) {
+        return `<div class="text-center py-20 opacity-20"><i class="fa-solid fa-comments text-5xl"></i><p class="text-[10px] font-black uppercase mt-4">Aucune interaction tracée</p></div>`;
+    }
+    return history.slice().reverse().map(h => {
+        let icon = "fa-note-sticky text-slate-400";
+        let bg = "bg-white";
+        if(h.type === 'APPEL') { icon = "fa-phone text-emerald-500"; bg = "bg-emerald-50/30"; }
+        if(h.type === 'EMAIL') { icon = "fa-envelope text-blue-500"; bg = "bg-blue-50/30"; }
+        
+        const dateStr = new Date(h.date).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+        return `
+            <div class="p-4 rounded-2xl border border-slate-100 ${bg} shadow-sm animate-fadeIn">
+                <div class="flex justify-between items-start mb-2">
+                    <span class="text-[9px] font-black text-slate-500 uppercase"><i class="fa-solid ${icon} mr-1"></i> ${h.type}</span>
+                    <span class="text-[8px] font-bold text-slate-300">${dateStr}</span>
+                </div>
+                <p class="text-xs text-slate-700 leading-relaxed font-medium">${h.content}</p>
+                <p class="text-[8px] font-black text-slate-400 mt-2 uppercase">Par ${h.author}</p>
+            </div>`;
+    }).join('');
+}
+
+
 // --- 5. SAUVEGARDE DU FORMULAIRE ---
 export async function saveLeadData(id) {
     const nomClient = document.getElementById('crm-nom').value;
@@ -557,6 +713,9 @@ function createLeadCard(lead, value) {
             <div class="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center text-[10px] font-black">${initial}</div>
             <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button onclick="window.openLeadModal('${lead.id}')" class="p-1.5 text-slate-400 hover:text-blue-600"><i class="fa-solid fa-pen-to-square text-[10px]"></i></button>
+            <button onclick="window.deleteLead('${lead.id}')" class="p-1.5 text-slate-400 hover:text-red-500 transition-all">
+                <i class="fa-solid fa-trash-can text-[10px]"></i>
+            </button>
             </div>
         </div>
         
@@ -575,6 +734,184 @@ function createLeadCard(lead, value) {
     return card;
 }
 
+/**
+ * Ouvre le sélecteur de fichier et l'envoie au serveur pour ce lead
+ */
+export async function uploadCrmFile(leadId) {
+    if (!leadId || leadId === 'null') {
+        return Swal.fire("Attention", "Veuillez d'abord enregistrer le prospect avant d'ajouter des fichiers.", "warning");
+    }
+
+    const { value: file } = await Swal.fire({
+        title: 'Sélectionner un document',
+        text: 'Format accepté : Images, PDF (Max 5 Mo)',
+        input: 'file',
+        inputAttributes: {
+            'accept': 'image/*,application/pdf',
+            'aria-label': 'Uploader votre document'
+        },
+        showCancelButton: true,
+        confirmButtonText: 'Lancer l\'upload',
+        confirmButtonColor: '#0f172a'
+    });
+
+    if (file) {
+        Swal.fire({
+            title: 'Envoi en cours...',
+            html: '<i class="fa-solid fa-circle-notch fa-spin text-blue-500 text-2xl"></i>',
+            showConfirmButton: false,
+            allowOutsideClick: false
+        });
+
+        const fd = new FormData();
+        fd.append('lead_id', leadId);
+        fd.append('crm_file', file);
+        fd.append('agent_name', AppState.currentUser.nom);
+
+        try {
+            const response = await fetch(`${SIRH_CONFIG.apiBaseUrl}/upload-lead-file`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${localStorage.getItem("sirh_token")}` },
+                body: fd
+            });
+
+            if (response.ok) {
+                Swal.fire("Succès", "Le document a été archivé dans la fiche client.", "success");
+                // On rafraîchit les données pour voir le fichier apparaître
+                initCRM().then(() => openLeadModal(leadId));
+            } else {
+                throw new Error("Erreur lors de l'upload");
+            }
+        } catch (e) {
+            Swal.fire("Erreur", e.message, "error");
+        }
+    }
+}
+
+
+
+
+
+/**
+ * Génère le dashboard financier dynamique en haut du CRM
+ */
+function renderCrmDashboard(totalValue, stageStats, stages) {
+    // 1. GESTION DES CARTES DE RÉSUMÉ (KPIs)
+    let dashContainer = document.getElementById('crm-dashboard-stats');
+    if (!dashContainer) {
+        dashContainer = document.createElement('div');
+        dashContainer.id = 'crm-dashboard-stats';
+        dashContainer.className = "grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 animate-fadeIn";
+        document.getElementById('view-crm').insertBefore(dashContainer, document.querySelector('.flex-1.overflow-x-auto'));
+    }
+
+    const fmt = (val) => new Intl.NumberFormat('fr-FR').format(val) + ' F';
+    
+    // On identifie spécifiquement la valeur de l'étape "Gagné" pour le KPI de droite
+    const wonStage = stages.find(s => s.label.toLowerCase().includes('gagn')) || { label: 'Gagné' };
+    const wonValue = stageStats[wonStage.label]?.value || 0;
+
+    dashContainer.innerHTML = `
+        <div class="bg-slate-900 p-5 rounded-[1.5rem] text-white shadow-xl relative overflow-hidden group">
+            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest relative z-10">Valeur Totale Pipeline</p>
+            <h3 class="text-2xl font-black mt-1 relative z-10">${fmt(totalValue)}</h3>
+            <i class="fa-solid fa-vault absolute -right-2 -bottom-2 text-5xl opacity-10 group-hover:scale-110 transition-transform"></i>
+        </div>
+        <div class="bg-white p-5 rounded-[1.5rem] border border-slate-100 shadow-sm relative overflow-hidden group">
+            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Opportunités Actives</p>
+            <h3 class="text-2xl font-black text-blue-600 mt-1">${AppState.crmLeads.length} <span class="text-xs text-slate-300 font-bold">Dossiers</span></h3>
+            <i class="fa-solid fa-briefcase absolute -right-2 -bottom-2 text-5xl text-slate-50 group-hover:rotate-12 transition-transform"></i>
+        </div>
+        <div class="bg-emerald-500 p-5 rounded-[1.5rem] text-white shadow-lg shadow-emerald-200 relative overflow-hidden group">
+            <p class="text-[9px] font-black text-emerald-100 uppercase tracking-widest">Chiffre d'Affaires Gagné</p>
+            <h3 class="text-2xl font-black mt-1">${fmt(wonValue)}</h3>
+            <i class="fa-solid fa-trophy absolute -right-2 -bottom-2 text-5xl opacity-20 group-hover:-rotate-12 transition-transform"></i>
+        </div>
+    `;
+
+    // 2. GESTION DU GRAPHIQUE BARRE DYNAMIQUE
+    let chartArea = document.getElementById('crm-chart-area');
+    if (!chartArea) {
+        chartArea = document.createElement('div');
+        chartArea.id = 'crm-chart-area';
+        chartArea.className = "bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm mb-8 animate-fadeIn";
+        chartArea.innerHTML = `
+            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Répartition financière par étape</p>
+            <div style="height: 220px;"><canvas id="crmDynamicChart"></canvas></div>
+        `;
+        document.getElementById('view-crm').insertBefore(chartArea, document.querySelector('.flex-1.overflow-x-auto'));
+    }
+
+    const ctx = document.getElementById('crmDynamicChart').getContext('2d');
+    if (window.myCrmChart) window.myCrmChart.destroy();
+
+    // On prépare les données du graphique en fonction des étapes réelles
+    const labels = stages.map(s => s.label);
+    const dataValues = stages.map(s => stageStats[s.label]?.value || 0);
+    const colors = stages.map(s => s.color || '#94a3b8');
+
+    window.myCrmChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                data: dataValues,
+                backgroundColor: colors.map(c => c + 'CC'), // 80% opacité
+                borderColor: colors,
+                borderWidth: 2,
+                borderRadius: 8,
+                barThickness: 45
+            }]
+        },
+        options: {
+            maintainAspectRatio: false,
+            plugins: { 
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: '#0f172a',
+                    titleFont: { size: 12, weight: 'bold' },
+                    bodyFont: { size: 11 },
+                    callbacks: {
+                        label: (context) => ` Valeur: ${new Intl.NumberFormat('fr-FR').format(context.raw)} F`
+                    }
+                }
+            },
+            scales: {
+                y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 9 } } },
+                x: { grid: { display: false }, ticks: { font: { size: 10, weight: '600' } } }
+            }
+        }
+    });
+}
+
+
+
+
+
+
+
+
+export async function deleteLead(id) {
+    const { isConfirmed } = await Swal.fire({
+        title: 'Supprimer ce prospect ?',
+        text: "Cette action est irréversible et effacera l'historique.",
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#ef4444',
+        confirmButtonText: 'Oui, supprimer'
+    });
+
+    if (isConfirmed) {
+        try {
+            await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/delete-lead`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id })
+            });
+            initCRM(); // Recharge le Kanban
+        } catch(e) { Swal.fire("Erreur", e.message, "error"); }
+    }
+}
 // Affiche ou cache le champ des options selon le type choisi
 window.toggleOptionsInput = (type) => {
     const area = document.getElementById('options-config-area');
