@@ -231,6 +231,10 @@ export function switchView(v) {
     searchContainer.style.opacity = "0";
   }
 
+  if (v === "crm") {
+      window.initCRM();
+  }
+
   if (v === "dash") {
     window.renderCharts();
     window.fetchLiveAttendance();
