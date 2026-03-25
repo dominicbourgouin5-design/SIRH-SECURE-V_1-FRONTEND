@@ -129,42 +129,6 @@ export async function renderKanban() {
     initDragAndDrop();
 }
 
-/**
- * Helper : Création d'une carte Lead stylisée (Style Odoo/SaaS)
- */
-function createLeadCard(lead, value, isLate) {
-    const initial = lead.nom_client ? lead.nom_client.charAt(0).toUpperCase() : '?';
-    const dateMaj = new Date(lead.updated_at || lead.created_at).toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
-    
-    const card = document.createElement('div');
-    card.className = `bg-white p-4 rounded-xl border-2 ${isLate ? 'border-red-100 bg-red-50/5' : 'border-transparent'} shadow-sm hover:shadow-md transition-all active:cursor-grabbing cursor-grab relative group animate-fadeIn`;
-    card.dataset.id = lead.id;
-
-    card.innerHTML = `
-        <div class="flex justify-between items-start mb-2">
-            <div class="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center text-[10px] font-black border border-slate-700 shadow-sm">${initial}</div>
-            <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onclick="window.openLeadModal('${lead.id}')" class="p-1.5 text-slate-400 hover:text-blue-600 transition-colors" title="Ouvrir"><i class="fa-solid fa-expand"></i></button>
-                <button onclick="window.deleteLead('${lead.id}')" class="p-1.5 text-slate-400 hover:text-red-500 transition-colors" title="Supprimer"><i class="fa-solid fa-trash-can"></i></button>
-            </div>
-        </div>
-        
-        <h4 class="font-black text-xs text-slate-800 leading-tight mb-2 truncate" title="${lead.nom_client}">${lead.nom_client}</h4>
-        
-        <div class="flex justify-between items-center mb-3">
-            <span class="text-[10px] font-black ${isLate ? 'text-red-500' : 'text-emerald-600'}">
-                ${value > 0 ? new Intl.NumberFormat('fr-FR').format(value) + ' F' : '---'}
-            </span>
-            ${(lead.data.files && lead.data.files.length > 0) ? '<i class="fa-solid fa-paperclip text-[10px] text-slate-300"></i>' : ''}
-        </div>
-
-        <div class="pt-3 border-t border-slate-50 flex justify-between items-center">
-            <span class="text-[8px] text-slate-300 font-medium italic">Maj: ${dateMaj}</span>
-            ${isLate ? '<span class="text-[8px] font-black text-red-500 uppercase animate-pulse"><i class="fa-solid fa-clock"></i> RETARD</span>' : ''}
-        </div>
-    `;
-    return card;
-}
 
 /**
  * Helper : Rendu du Dashboard Financier et Graphique Dynamique
