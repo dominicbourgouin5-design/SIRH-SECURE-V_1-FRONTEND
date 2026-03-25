@@ -13,7 +13,7 @@ export const SIRH_CONFIG = {
   },
   gps: { enabled: true, strictMode: true, offices: [] },
   features: { recruitment: true, payroll: true, auditLogs: true },
-  apiBaseUrl: "https://sirh-secure.onrender.com/api",
+  apiBaseUrl: "https://sirh-backend-etx9.onrender.com/api",
 };
 
 export const URL_LOGIN = `${SIRH_CONFIG.apiBaseUrl}/login`;
