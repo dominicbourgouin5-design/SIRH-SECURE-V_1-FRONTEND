@@ -330,12 +330,13 @@ export async function handleClockInOut() {
             willClose: () => { stopAllCameras(); },
             preConfirm: () => {
                 try {
-
-                    crm_lead_id: document.getElementById('swal-crm-lead') ? document.getElementById('swal-crm-lead').value : null,
-                      
+                    // 1. Déclarer correctement la variable pour le CRM
+                    const crm_lead_id = document.getElementById('swal-crm-lead') ? document.getElementById('swal-crm-lead').value : null;
+                    
                     let finalProof = AppState.proofBlob || null;
                     const signArea = document.getElementById('proof-sign-area');
 
+                    // 2. Gestion de la signature
                     if (signArea && !signArea.classList.contains('hidden') && window.visitSignPad && !window.visitSignPad.isEmpty()) {
                         const dataUrl = window.visitSignPad.toDataURL('image/png');
                         const arr = dataUrl.split(',');
@@ -353,7 +354,7 @@ export async function handleClockInOut() {
                     const prescripteurEl = document.getElementById('swal-prescripteur');
                     const nomLibreEl = document.getElementById('swal-nom-libre');
 
-                    // On retourne l'objet proprement mappé
+                    // 3. Retourner l'objet final au serveur
                     return {
                         outcome: outcomeEl?.value || 'VU',
                         report: reportEl?.value || '',
@@ -361,6 +362,7 @@ export async function handleClockInOut() {
                         prescripteur_id: prescripteurEl?.value || null,
                         contact_nom_libre: nomLibreEl?.value || null,
                         presentedProducts: Array.from(document.querySelectorAll('input[name="presented_prods"]:checked')).map(i => i.dataset.name),
+                        crm_lead_id: crm_lead_id, 
                         proofFile: finalProof 
                     };
                 } catch (err) {
