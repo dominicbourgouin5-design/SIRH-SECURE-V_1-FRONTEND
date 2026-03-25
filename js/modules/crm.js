@@ -25,70 +25,140 @@ export async function initCRM() {
     }
 }
 
-// --- 2. AFFICHAGE DES CARTES ---
+ /**
+ * Rendu complet du Kanban CRM avec Calcul de Valeur et Graphique
+ */
 export function renderKanban() {
-    const cols = { 'Nouveau': document.getElementById('kanban-nouveau'), 'Negociation': document.getElementById('kanban-nego'), 'Gagné': document.getElementById('kanban-gagne') };
-    Object.values(cols).forEach(c => { if(c) c.innerHTML = ''; });
-    let counts = { 'Nouveau': 0, 'Negociation': 0, 'Gagné': 0 };
-    
-    // --- 💥 NOUVEAU : CALCUL DU PIPELINE COMMERCIAL ---
-    let totalValue = 0, negoValue = 0, wonValue = 0;
+    // 1. INITIALISATION DES COLONNES
+    const cols = { 
+        'Nouveau': document.getElementById('kanban-nouveau'), 
+        'Negociation': document.getElementById('kanban-nego'), 
+        'Gagné': document.getElementById('kanban-gagne') 
+    };
 
+    // Nettoyage des colonnes avant rendu
+    Object.values(cols).forEach(c => { if(c) c.innerHTML = ''; });
+
+    let counts = { 'Nouveau': 0, 'Negociation': 0, 'Gagné': 0 };
+    let newValue = 0, negoValue = 0, wonValue = 0;
+
+    // 2. BOUCLE SUR LES LEADS
     AppState.crmLeads.forEach(lead => {
         const col = cols[lead.status] || cols['Nouveau'];
         counts[lead.status] = (counts[lead.status] || 0) + 1;
 
-        // Détection intelligente du montant (On cherche un champ contenant 'budget', 'montant', 'ca', etc.)
+        // Détection intelligente du montant (cherche les clés 'budget', 'montant', 'ca', 'valeur')
         let leadValue = 0;
         if (lead.data) {
             for (let key in lead.data) {
-                if (key.includes('budget') || key.includes('montant') || key.includes('chiffre') || key.includes('valeur')) {
+                const k = key.toLowerCase();
+                if (k.includes('budget') || k.includes('montant') || k.includes('ca') || k.includes('valeur')) {
                     leadValue = parseFloat(lead.data[key]) || 0;
                     break;
                 }
             }
         }
-        totalValue += leadValue;
-        if (lead.status === 'Negociation') negoValue += leadValue;
-        if (lead.status === 'Gagné') wonValue += leadValue;
 
-        // Rendu de la carte (inchangé)
+        // Accumulation des valeurs par statut
+        if (lead.status === 'Gagné') wonValue += leadValue;
+        else if (lead.status === 'Negociation') negoValue += leadValue;
+        else newValue += leadValue;
+
+        // Construction de la carte HTML
         const date = new Date(lead.updated_at || lead.created_at).toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
-        const initial = lead.nom_client.charAt(0).toUpperCase();
+        const initial = lead.nom_client ? lead.nom_client.charAt(0).toUpperCase() : '?';
+        const fmtLeadValue = new Intl.NumberFormat('fr-FR').format(leadValue);
+
         const card = document.createElement('div');
-        card.className = "bg-white p-4 rounded-xl border border-slate-200 shadow-sm cursor-grab hover:shadow-md transition-all active:cursor-grabbing relative group";
+        card.className = "bg-white p-4 rounded-xl border border-slate-200 shadow-sm cursor-grab hover:shadow-md transition-all active:cursor-grabbing relative group animate-fadeIn";
         card.dataset.id = lead.id;
         card.innerHTML = `
             <div class="flex justify-between items-start mb-3">
-                <div class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold flex items-center justify-center text-xs border">${initial}</div>
-                <button onclick="window.openLeadModal('${lead.id}')" class="text-slate-300 hover:text-blue-500 bg-slate-50 px-2 py-1 rounded transition-colors"><i class="fa-solid fa-expand text-[10px]"></i></button>
+                <div class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold flex items-center justify-center text-xs border border-slate-200">${initial}</div>
+                <button onclick="window.openLeadModal('${lead.id}')" class="text-slate-300 hover:text-blue-500 bg-slate-50 px-2 py-1 rounded transition-colors">
+                    <i class="fa-solid fa-expand text-[10px]"></i>
+                </button>
             </div>
-            <h4 class="font-black text-sm text-slate-800 leading-tight mb-1">${lead.nom_client}</h4>
-            <p class="text-[10px] font-bold text-emerald-600 mb-2">${leadValue > 0 ? new Intl.NumberFormat('fr-FR').format(leadValue) + ' CFA' : ''}</p>
-            <p class="text-[9px] text-slate-400 font-medium flex items-center gap-1"><i class="fa-regular fa-clock"></i> Maj: ${date}</p>
+            <h4 class="font-black text-sm text-slate-800 leading-tight mb-1 truncate" title="${lead.nom_client}">${lead.nom_client}</h4>
+            <div class="flex flex-col gap-1">
+                ${leadValue > 0 ? `<p class="text-[11px] font-black text-emerald-600">${fmtLeadValue} CFA</p>` : ''}
+                <p class="text-[9px] text-slate-400 font-medium flex items-center gap-1">
+                    <i class="fa-regular fa-clock"></i> Màj: ${date}
+                </p>
+            </div>
         `;
         col.appendChild(card);
     });
 
-    document.getElementById('count-nouveau').innerText = counts['Nouveau'];
-    document.getElementById('count-nego').innerText = counts['Negociation'];
-    document.getElementById('count-gagne').innerText = counts['Gagné'];
+    // 3. MISE À JOUR DES COMPTEURS DE COLONNES
+    if (document.getElementById('count-nouveau')) document.getElementById('count-nouveau').innerText = counts['Nouveau'];
+    if (document.getElementById('count-nego')) document.getElementById('count-nego').innerText = counts['Negociation'];
+    if (document.getElementById('count-gagne')) document.getElementById('count-gagne').innerText = counts['Gagné'];
 
-    // INJECTION DES STATS EN HAUT DE L'ÉCRAN
+    // 4. INJECTION DU DASHBOARD FINANCIER (CARTES)
     let dashContainer = document.getElementById('crm-dashboard-stats');
     if (!dashContainer) {
         dashContainer = document.createElement('div');
         dashContainer.id = 'crm-dashboard-stats';
-        dashContainer.className = "grid grid-cols-3 gap-4 mb-6";
+        dashContainer.className = "grid grid-cols-3 gap-4 mb-6 animate-fadeIn";
         document.getElementById('view-crm').insertBefore(dashContainer, document.querySelector('.flex-1.overflow-x-auto'));
     }
     
     const fmt = (val) => new Intl.NumberFormat('fr-FR').format(val) + ' F';
     dashContainer.innerHTML = `
-        <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm"><p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Valeur Globale</p><h3 class="text-xl font-black text-slate-800">${fmt(totalValue)}</h3></div>
-        <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100 shadow-sm"><p class="text-[9px] font-black text-blue-500 uppercase tracking-widest">En Négociation</p><h3 class="text-xl font-black text-blue-700">${fmt(negoValue)}</h3></div>
-        <div class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100 shadow-sm"><p class="text-[9px] font-black text-emerald-500 uppercase tracking-widest">Chiffre Gagné</p><h3 class="text-xl font-black text-emerald-700">${fmt(wonValue)}</h3></div>
+        <div class="bg-white p-5 rounded-[1.5rem] border border-slate-100 shadow-sm relative overflow-hidden group">
+            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest relative z-10">Valeur Pipeline</p>
+            <h3 class="text-xl font-black text-slate-800 relative z-10">${fmt(newValue + negoValue + wonValue)}</h3>
+            <i class="fa-solid fa-chart-line absolute -right-2 -bottom-2 text-4xl text-slate-50 opacity-10 group-hover:scale-110 transition-transform"></i>
+        </div>
+        <div class="bg-blue-600 p-5 rounded-[1.5rem] text-white shadow-lg shadow-blue-200 relative overflow-hidden group">
+            <p class="text-[9px] font-black text-blue-100 uppercase tracking-widest relative z-10">En Négociation</p>
+            <h3 class="text-xl font-black relative z-10">${fmt(negoValue)}</h3>
+            <i class="fa-solid fa-comments-dollar absolute -right-2 -bottom-2 text-4xl text-white opacity-10 group-hover:rotate-12 transition-transform"></i>
+        </div>
+        <div class="bg-emerald-500 p-5 rounded-[1.5rem] text-white shadow-lg shadow-emerald-200 relative overflow-hidden group">
+            <p class="text-[9px] font-black text-emerald-50 uppercase tracking-widest relative z-10">Chiffre Gagné</p>
+            <h3 class="text-xl font-black relative z-10">${fmt(wonValue)}</h3>
+            <i class="fa-solid fa-trophy absolute -right-2 -bottom-2 text-4xl text-white opacity-10 group-hover:-rotate-12 transition-transform"></i>
+        </div>
     `;
+
+    // 5. INJECTION DU GRAPHIQUE (CHART.JS)
+    let chartContainer = document.getElementById('crm-chart-area');
+    if (!chartContainer) {
+        chartContainer = document.createElement('div');
+        chartContainer.id = 'crm-chart-area';
+        chartContainer.className = "bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm mb-8 animate-fadeIn";
+        chartContainer.innerHTML = `
+            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Répartition de la valeur du Pipeline</p>
+            <div style="height: 180px;"><canvas id="crmValueChart"></canvas></div>
+        `;
+        document.getElementById('view-crm').insertBefore(chartContainer, document.querySelector('.flex-1.overflow-x-auto'));
+    }
+
+    const ctx = document.getElementById('crmValueChart').getContext('2d');
+    if (window.myCrmChart) window.myCrmChart.destroy();
+
+    window.myCrmChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: ['Nouveaux', 'En Négociation', 'Gagnés'],
+            datasets: [{
+                data: [newValue, negoValue, wonValue],
+                backgroundColor: ['#94a3b8', '#3b82f6', '#10b981'],
+                borderRadius: 12,
+                barThickness: 50
+            }]
+        },
+        options: {
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                y: { beginAtZero: true, grid: { display: false }, ticks: { display: false }, border: { display: false } },
+                x: { grid: { display: false }, border: { display: false }, ticks: { font: { size: 10, weight: 'bold' } } }
+            }
+        }
+    });
 }
 
 // --- 3. LE GLISSER-DÉPOSER (SORTABLE.JS) ---
@@ -261,20 +331,47 @@ export async function addInteraction(leadId) {
     const type = document.getElementById('interaction-type').value;
     const text = document.getElementById('interaction-text').value;
 
-    if (type === 'EMAIL') {
-        const email = prompt("Adresse email du client :");
-        const subject = prompt("Sujet de l'email :");
-        if (!email || !subject || !text) return Swal.fire("Erreur", "L'email, le sujet et le texte sont obligatoires", "warning");
+if (type === 'EMAIL') {
+        const { value: emailData } = await Swal.fire({
+            title: 'Rédiger un message',
+            html: `
+                <div class="text-left">
+                    <label class="text-[10px] font-black text-slate-400 uppercase ml-1">Destinataire</label>
+                    <input id="swal-mail-to" class="swal2-input !mt-1" value="${lead.data.email || ''}" placeholder="email@client.com">
+                    
+                    <label class="text-[10px] font-black text-slate-400 uppercase ml-1 mt-4 block">Sujet</label>
+                    <input id="swal-mail-sub" class="swal2-input !mt-1" placeholder="Ex: Suite à notre rencontre...">
+                </div>
+            `,
+            confirmButtonText: 'Envoyer maintenant',
+            showCancelButton: true,
+            preConfirm: () => {
+                return {
+                    to: document.getElementById('swal-mail-to').value,
+                    subject: document.getElementById('swal-mail-sub').value,
+                    content: document.getElementById('interaction-text').value // Utilise le texte déjà tapé dans l'input
+                }
+            }
+        });
 
-        Swal.fire({ title: 'Envoi en cours...', didOpen: () => Swal.showLoading() });
-        try {
-            await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/send-email`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ lead_id: leadId, to_email: email, subject: subject, content: text, agent_name: AppState.currentUser.nom })
-            });
-            Swal.fire("Envoyé !", "Le mail est parti et a été tracé dans l'historique.", "success");
-            initCRM().then(() => openLeadModal(leadId));
-        } catch(e) { Swal.fire("Erreur", "L'envoi a échoué.", "error"); }
+        if (emailData) {
+            Swal.fire({ title: 'Expédition...', didOpen: () => Swal.showLoading() });
+            try {
+                await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/send-email`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        lead_id: leadId, 
+                        to_email: emailData.to, 
+                        subject: emailData.subject, 
+                        content: emailData.content, 
+                        agent_name: AppState.currentUser.nom 
+                    })
+                });
+                Swal.fire("Succès", "L'email a été envoyé au client.", "success");
+                initCRM().then(() => openLeadModal(leadId));
+            } catch(e) { Swal.fire("Erreur", "Échec de l'envoi", "error"); }
+        }
     } else {
         // Logique Note/Appel classique
         if (!text) return;
