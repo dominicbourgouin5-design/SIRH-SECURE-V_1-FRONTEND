@@ -229,6 +229,8 @@ window.initCRM = CRM.initCRM;
 window.openLeadModal = CRM.openLeadModal;
 window.saveLeadData = CRM.saveLeadData;
 window.addInteraction = CRM.addInteraction;
+window.openCrmSettings = CRM.openCrmSettings;
+window.saveCrmField = CRM.saveCrmField;
 
 // Ajoute l'appel dans switchView (vers la ligne 125)
 if (v === "crm") {
