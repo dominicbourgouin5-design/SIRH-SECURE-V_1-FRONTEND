@@ -223,6 +223,14 @@ export async function handleClockInOut() {
                 </div>
             </label>`).join('');
 
+    // On récupère les leads CRM pour les afficher dans la liste
+        let crmOptions = '<option value="">-- Lier à un prospect CRM (Optionnel) --</option>';
+        if (AppState.crmLeads) {
+            AppState.crmLeads.forEach(l => {
+                crmOptions += `<option value="${l.id}">${l.nom_client} (${l.status})</option>`;
+            });
+        }
+      
         const swalRes = await Swal.fire({
             title: `Fin de ${L.visit_singular.toLowerCase()}`,
             customClass: { popup: 'wide-modal' },
@@ -246,6 +254,10 @@ export async function handleClockInOut() {
                             </select>
                             <p class="text-[9px] font-black text-slate-400 uppercase mt-4 mb-2">${L.product_plural} présentés</p>
                             <div class="flex flex-wrap gap-2 max-h-[100px] overflow-y-auto p-1">${productsHtml}</div>
+                        </div>
+                        <div class="bg-blue-50 p-4 rounded-xl border border-blue-100 mt-4">
+                            <label class="text-[9px] font-black text-blue-600 uppercase mb-1 block">Liaison CRM (Commercial)</label>
+                            <select id="swal-crm-lead" class="w-full p-2.5 bg-white border border-blue-200 rounded-lg text-xs outline-none">${crmOptions}</select>
                         </div>
                     </div>
                     <div class="space-y-6 flex flex-col">
@@ -318,6 +330,9 @@ export async function handleClockInOut() {
             willClose: () => { stopAllCameras(); },
             preConfirm: () => {
                 try {
+
+                    crm_lead_id: document.getElementById('swal-crm-lead') ? document.getElementById('swal-crm-lead').value : null,
+                      
                     let finalProof = AppState.proofBlob || null;
                     const signArea = document.getElementById('proof-sign-area');
 
@@ -397,6 +412,7 @@ export async function handleClockInOut() {
         if (action === 'CLOCK_OUT' && isMobile && AppState.formResult) {
             const fr = AppState.formResult;
             payloadObj.outcome = fr.outcome;
+            payloadObj.crm_lead_id = fr.crm_lead_id || null;
             payloadObj.report = fr.report;
             payloadObj.prescripteur_id = (fr.prescripteur_id && fr.prescripteur_id !== 'autre') ? fr.prescripteur_id : null;
             payloadObj.contact_nom_libre = fr.contact_nom_libre;
