@@ -254,10 +254,14 @@ export function initDragAndDrop() {
                 // Si on a changé de colonne, on met à jour la base de données silencieusement
                 if (evt.from !== evt.to) {
                     try {
-                        await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/save-lead`, {
+                    await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/save-lead`, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ id: leadId, status: newStatus })
+                            body: JSON.stringify({ 
+                                id: leadId, 
+                                status: newStatus,
+                                agent_name: AppState.currentUser.nom // ⬅️ ASSURE-TOI QUE CETTE LIGNE EST LÀ
+                            })
                         });
                         // Met à jour la mémoire et les compteurs
                         const lead = AppState.crmLeads.find(l => l.id === leadId);
