@@ -1,0 +1,256 @@
+import { AppState } from "../core/state.js";
+import { SIRH_CONFIG } from "../core/config.js";
+import { secureFetch } from "../core/api.js";
+
+// --- 1. INITIALISATION DU CRM ---
+export async function initCRM() {
+    try {
+        Swal.fire({ title: 'Chargement CRM...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+
+        // On charge les Leads ET la Configuration des champs dynamiques
+        const [resLeads, resFields] = await Promise.all([
+            secureFetch(`${SIRH_CONFIG.apiBaseUrl}/leads`),
+            secureFetch(`${SIRH_CONFIG.apiBaseUrl}/crm-fields`)
+        ]);
+
+        AppState.crmLeads = await resLeads.json();
+        AppState.crmFields = await resFields.json();
+
+        renderKanban();
+        initDragAndDrop();
+        Swal.close();
+    } catch (e) {
+        console.error("Erreur CRM:", e);
+        Swal.fire("Erreur", "Impossible de charger le CRM", "error");
+    }
+}
+
+// --- 2. AFFICHAGE DES CARTES ---
+export function renderKanban() {
+    const cols = {
+        'Nouveau': document.getElementById('kanban-nouveau'),
+        'Negociation': document.getElementById('kanban-nego'),
+        'Gagné': document.getElementById('kanban-gagne')
+    };
+
+    // Vider les colonnes
+    Object.values(cols).forEach(c => { if(c) c.innerHTML = ''; });
+    let counts = { 'Nouveau': 0, 'Negociation': 0, 'Gagné': 0 };
+
+    AppState.crmLeads.forEach(lead => {
+        const col = cols[lead.status] || cols['Nouveau'];
+        counts[lead.status] = (counts[lead.status] || 0) + 1;
+
+        // Date formattée
+        const date = new Date(lead.updated_at || lead.created_at).toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
+        const initial = lead.nom_client.charAt(0).toUpperCase();
+
+        const card = document.createElement('div');
+        card.className = "bg-white p-4 rounded-xl border border-slate-200 shadow-sm cursor-grab hover:shadow-md transition-all active:cursor-grabbing relative group";
+        card.dataset.id = lead.id;
+        card.innerHTML = `
+            <div class="flex justify-between items-start mb-3">
+                <div class="w-8 h-8 rounded-full bg-slate-100 text-slate-500 font-bold flex items-center justify-center text-xs border">${initial}</div>
+                <button onclick="window.openLeadModal('${lead.id}')" class="text-slate-300 hover:text-blue-500 bg-slate-50 px-2 py-1 rounded transition-colors"><i class="fa-solid fa-expand text-[10px]"></i></button>
+            </div>
+            <h4 class="font-black text-sm text-slate-800 leading-tight mb-1">${lead.nom_client}</h4>
+            <p class="text-[10px] text-slate-400 font-medium flex items-center gap-1"><i class="fa-regular fa-clock"></i> Maj: ${date}</p>
+        `;
+        col.appendChild(card);
+    });
+
+    // Mettre à jour les compteurs
+    document.getElementById('count-nouveau').innerText = counts['Nouveau'];
+    document.getElementById('count-nego').innerText = counts['Negociation'];
+    document.getElementById('count-gagne').innerText = counts['Gagné'];
+}
+
+// --- 3. LE GLISSER-DÉPOSER (SORTABLE.JS) ---
+export function initDragAndDrop() {
+    const columns = document.querySelectorAll('.kanban-col');
+    columns.forEach(col => {
+        new Sortable(col, {
+            group: 'kanban', // Permet de passer d'une colonne à l'autre
+            animation: 150,
+            ghostClass: 'opacity-30', // Style de la carte fantôme pendant le drag
+            onEnd: async function (evt) {
+                const itemEl = evt.item;
+                const leadId = itemEl.dataset.id;
+                const newStatus = evt.to.dataset.status;
+
+                // Si on a changé de colonne, on met à jour la base de données silencieusement
+                if (evt.from !== evt.to) {
+                    try {
+                        await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/save-lead`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: leadId, status: newStatus })
+                        });
+                        // Met à jour la mémoire et les compteurs
+                        const lead = AppState.crmLeads.find(l => l.id === leadId);
+                        if (lead) lead.status = newStatus;
+                        renderKanban(); 
+                    } catch(e) {
+                        console.error("Erreur Drag Drop:", e);
+                        initCRM(); // Si ça plante, on recharge pour annuler l'erreur visuelle
+                    }
+                }
+            }
+        });
+    });
+}
+
+// --- 4. LA FICHE CLIENT (Formulaire Dynamique + Historique) ---
+export async function openLeadModal(id = null) {
+    const lead = id ? AppState.crmLeads.find(l => l.id === id) : { data: {} };
+    const title = id ? lead.nom_client : "Nouveau Prospect";
+    
+    // GÉNÉRATION DYNAMIQUE DES CHAMPS (Le No-Code !)
+    let dynamicHtml = '';
+    const fields = AppState.crmFields || [];
+    
+    fields.forEach(f => {
+        const val = lead.data[f.key_name] || '';
+        let inputHtml = '';
+        
+        if (f.field_type === 'text') inputHtml = `<input id="dyn-${f.key_name}" value="${val}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500">`;
+        if (f.field_type === 'number') inputHtml = `<input type="number" id="dyn-${f.key_name}" value="${val}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500">`;
+        if (f.field_type === 'date') inputHtml = `<input type="date" id="dyn-${f.key_name}" value="${val}" class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500">`;
+
+        dynamicHtml += `
+            <div class="mb-4">
+                <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">${f.label}</label>
+                ${inputHtml}
+            </div>
+        `;
+    });
+
+    // HISTORIQUE DES INTERACTIONS (Timeline)
+    let historyHtml = '<div class="text-center text-slate-400 text-xs italic py-10 border-2 border-dashed rounded-xl">Aucune interaction</div>';
+    if (lead.history && lead.history.length > 0) {
+        historyHtml = '<div class="space-y-3 max-h-[300px] overflow-y-auto custom-scroll pr-2">';
+        lead.history.slice().reverse().forEach(h => {
+            const icon = h.type === 'APPEL' ? 'fa-phone text-emerald-500' : (h.type === 'EMAIL' ? 'fa-envelope text-blue-500' : 'fa-note-sticky text-orange-500');
+            const dateStr = new Date(h.date).toLocaleDateString('fr-FR', {day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'});
+            historyHtml += `
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 flex gap-3 items-start">
+                    <i class="fa-solid ${icon} mt-1"></i>
+                    <div>
+                        <p class="text-[10px] font-bold text-slate-400">${h.author} • ${dateStr}</p>
+                        <p class="text-xs text-slate-700 font-medium leading-relaxed mt-1">${h.content}</p>
+                    </div>
+                </div>
+            `;
+        });
+        historyHtml += '</div>';
+    }
+
+    const { value: result } = await Swal.fire({
+        title: `<div class="text-left text-xl font-black uppercase text-slate-800">${title}</div>`,
+        width: '900px',
+        customClass: { popup: 'rounded-[2rem] p-0 overflow-hidden' },
+        showConfirmButton: false,
+        showCloseButton: true,
+        html: `
+            <div class="flex flex-col md:flex-row text-left border-t border-slate-100 bg-white min-h-[500px]">
+                
+                <!-- GAUCHE : LE FORMULAIRE -->
+                <div class="w-full md:w-1/2 p-8 border-r border-slate-100">
+                    <p class="text-[10px] font-black text-sky-500 uppercase tracking-widest mb-4"><i class="fa-solid fa-address-card"></i> Informations (Éditables)</p>
+                    
+                    <div class="mb-4">
+                        <label class="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Nom du Client / Entreprise *</label>
+                        <input id="crm-nom" value="${lead.nom_client || ''}" class="w-full p-3 bg-white border-2 border-slate-200 rounded-xl text-sm font-black outline-none focus:border-sky-500">
+                    </div>
+                    
+                    <!-- INJECTION DES CHAMPS DYNAMIQUES ICI -->
+                    ${dynamicHtml}
+                    
+                    <button onclick="window.saveLeadData('${id || ''}')" class="w-full mt-6 py-4 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg hover:bg-sky-500 transition-all active:scale-95">
+                        <i class="fa-solid fa-floppy-disk mr-2"></i> Enregistrer la fiche
+                    </button>
+                </div>
+
+                <!-- DROITE : HISTORIQUE ET ACTIONS -->
+                <div class="w-full md:w-1/2 p-8 bg-slate-50 flex flex-col">
+                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4"><i class="fa-solid fa-clock-rotate-left"></i> Historique des Échanges</p>
+                    
+                    <!-- Bloc d'ajout d'interaction (Visible uniquement si le lead existe déjà) -->
+                    ${id ? `
+                        <div class="mb-6 bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex gap-2">
+                            <select id="interaction-type" class="bg-slate-50 border-none rounded-lg text-[10px] font-bold outline-none">
+                                <option value="NOTE">📝 Note</option>
+                                <option value="APPEL">📞 Appel</option>
+                                <option value="EMAIL">📧 Email</option>
+                            </select>
+                            <input id="interaction-text" type="text" class="flex-1 bg-transparent text-xs outline-none" placeholder="Ajouter une trace...">
+                            <button onclick="window.addInteraction('${id}')" class="bg-blue-100 text-blue-600 w-8 h-8 rounded-lg hover:bg-blue-600 hover:text-white transition-all"><i class="fa-solid fa-paper-plane text-xs"></i></button>
+                        </div>
+                    ` : '<p class="text-xs text-orange-500 italic mb-4">Enregistrez d\'abord le prospect pour ajouter des notes.</p>'}
+
+                    <!-- Affichage de la Timeline -->
+                    <div class="flex-1">
+                        ${historyHtml}
+                    </div>
+                </div>
+            </div>
+        `
+    });
+}
+
+// --- 5. SAUVEGARDE DU FORMULAIRE ---
+export async function saveLeadData(id) {
+    const nomClient = document.getElementById('crm-nom').value;
+    if (!nomClient) return Swal.showValidationMessage("Le nom est obligatoire");
+
+    // On parcourt les champs dynamiques pour construire le JSONB
+    const dynamicData = {};
+    AppState.crmFields.forEach(f => {
+        const el = document.getElementById(`dyn-${f.key_name}`);
+        if (el) dynamicData[f.key_name] = el.value;
+    });
+
+    Swal.fire({ title: 'Sauvegarde...', didOpen: () => Swal.showLoading() });
+
+    try {
+        await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/save-lead`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                id: id || null,
+                nom_client: nomClient,
+                ...dynamicData
+            })
+        });
+        Swal.close();
+        initCRM(); // Recharge tout le Kanban
+    } catch(e) {
+        Swal.fire("Erreur", e.message, "error");
+    }
+}
+
+// --- 6. AJOUTER UNE INTERACTION (Note, Appel, etc.) ---
+export async function addInteraction(leadId) {
+    const text = document.getElementById('interaction-text').value;
+    const type = document.getElementById('interaction-type').value;
+
+    if (!text) return;
+
+    try {
+        await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/add-interaction`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                lead_id: leadId,
+                type: type,
+                content: text,
+                agent_name: AppState.currentUser.nom
+            })
+        });
+        
+        // On rafraichit la fiche
+        initCRM().then(() => openLeadModal(leadId));
+    } catch(e) {
+        Swal.fire("Erreur", "Impossible d'ajouter la note", "error");
+    }
+}
