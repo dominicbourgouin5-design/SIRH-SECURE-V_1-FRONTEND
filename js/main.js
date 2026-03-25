@@ -14,6 +14,7 @@ import * as Ops from "./modules/ops.js";
 import * as Chat from "./modules/chat.js";
 import * as Admin from "./modules/admin.js";
 import * as Utils from "./core/utils.js"; 
+import * as CRM from "./modules/crm.js";
 
 
 // ==============================================================
@@ -221,6 +222,18 @@ window.fetchFlashMessage = Admin.fetchFlashMessage;
 window.triggerRobotCheck = Admin.triggerRobotCheck;
 window.applyDynamicLabels = Utils.applyDynamicLabels;
 
+
+
+// Branchements Window
+window.initCRM = CRM.initCRM;
+window.openLeadModal = CRM.openLeadModal;
+window.saveLeadData = CRM.saveLeadData;
+window.addInteraction = CRM.addInteraction;
+
+// Ajoute l'appel dans switchView (vers la ligne 125)
+if (v === "crm") {
+    window.initCRM();
+}
 
 // --- Divers / Utilitaires ---
 window.closeEditor = () => {
