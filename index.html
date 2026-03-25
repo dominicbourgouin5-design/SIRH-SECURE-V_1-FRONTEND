@@ -1924,139 +1924,136 @@
 
 
 
-                <!-- MODAL ADMINISTRATION (VERSION PREMIUM UX) -->
-            <div id="edit-modal" class="fixed inset-0 bg-slate-900/60 hidden flex items-center justify-center z-[200] p-4 backdrop-blur-md transition-all duration-300">
-                
-                <!-- Boite principale avec arrondi XL et ombre profonde -->
-                <div class="bg-white w-full max-w-lg rounded-2xl p-6 shadow-2xl overflow-y-auto max-h-[90vh] border border-white/20 animate-fadeIn">
-                    
-                    <!-- En-tête de la modale -->
-                    <div class="flex justify-between items-center mb-10">
-                        <div>
-                            <h3 class="font-black text-2xl uppercase text-slate-800 tracking-tighter">Administration</h3>
-                            <p class="text-[10px] font-black text-blue-600 uppercase tracking-[0.2em]">Mise à jour du collaborateur</p>
-                        </div>
-                        <button onclick="closeEditModal()" class="w-12 h-12 flex items-center justify-center rounded-2xl bg-slate-100 text-slate-400 hover:bg-red-50 hover:text-red-500 transition-all active:scale-90">
-                            <i class="fa-solid fa-xmark text-lg"></i>
-                        </button>
+<!-- MODAL ADMINISTRATION (REDESIGN PREMIUM) -->
+<div id="edit-modal" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm hidden flex items-center justify-center z-[200] p-4 transition-all duration-300">
+    
+    <div class="bg-white w-full max-w-2xl rounded-[2rem] shadow-2xl overflow-hidden flex flex-col max-h-[95vh] border border-white/20 animate-fadeIn">
+        
+        <!-- HEADER DESIGN SOMBRE -->
+        <div class="bg-slate-900 px-8 py-6 text-white flex justify-between items-center shrink-0">
+            <div>
+                <h3 class="text-xl font-black uppercase tracking-tighter">Administration</h3>
+                <p class="text-[10px] text-blue-400 font-bold uppercase tracking-[0.2em] mt-1">Mise à jour du dossier collaborateur</p>
+            </div>
+            <button onclick="closeEditModal()" class="w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 hover:bg-red-500/20 hover:text-red-400 transition-all">
+                <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+        </div>
+
+        <input type="hidden" id="edit-id-hidden">
+
+        <form onsubmit="submitUpdate(event)" class="p-8 overflow-y-auto custom-scroll space-y-8">
+            
+            <!-- SECTION 1 : HABILITATIONS & ACCÈS -->
+            <div class="space-y-4">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <i class="fa-solid fa-shield-halved text-blue-500"></i> Statut & Habilitations
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">État Civil RH</label>
+                        <select id="edit-statut" class="w-full bg-transparent font-bold text-slate-800 outline-none cursor-pointer">
+                            <option value="Actif">🟢 Actif (En poste)</option>
+                            <option value="Congé">🟡 En Congé</option>
+                            <option value="Sortie">🔴 Sortie Définitive</option>
+                        </select>
                     </div>
-                    
-                    <input type="hidden" id="edit-id-hidden">
-                    
-                    <form onsubmit="submitUpdate(event)" class="space-y-8">
-                        
-                        <!-- 1. BLOC : STATUT & ACCÈS -->
-                        <div id="edit-block-status" class="space-y-4">
-                            <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Statut & Habilitations</p>
-                            <div class="grid grid-cols-2 gap-4">
-                                <div class="bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
-                                    <label class="block text-[9px] font-black text-slate-400 uppercase mb-1 ml-2">État Civil</label>
-                                    <select id="edit-statut" class="w-full p-3 bg-transparent font-bold text-slate-700 outline-none cursor-pointer">
-                                        <option value="Actif">🟢 Actif</option>
-                                        <option value="Congé">🟡 En Congé</option>
-                                        <option value="Sortie">🔴 Sortie Définitive</option>
-                                    </select>
-                                </div>
-                                <div class="bg-blue-50/50 p-1.5 rounded-2xl border border-blue-100">
-                                    <label class="block text-[9px] font-black text-blue-400 uppercase mb-1 ml-2">Rôle Système</label>
-                                    <select id="edit-role" class="w-full p-3 bg-transparent font-black text-blue-700 outline-none cursor-pointer">
-                                        <!-- Rempli par JS -->
-                                    </select>
-                                </div>
-                            </div>
-        
-                            <div class="bg-indigo-50/50 p-1.5 rounded-2xl border border-indigo-100">
-                                <label class="block text-[9px] font-black text-indigo-400 uppercase mb-1 ml-2">Type d'Activité (Règle GPS)</label>
-                                <select id="edit-type" class="w-full p-3 bg-transparent font-black text-indigo-700 outline-none cursor-pointer">
-                                    <option value="OFFICE">🏢 Bureau (Fixe)</option>
-                                    <option value="FIXED">🏠 Agent Site (Fixe)</option>
-                                    <option value="MOBILE">🚗 Délégué (Nomade)</option>
-                                </select>
-                            </div>
-        
-                            <div class="bg-slate-50 p-1.5 rounded-2xl border border-slate-100">
-                                <label class="block text-[9px] font-black text-slate-400 uppercase mb-1 ml-2">Département / Service</label>
-                                <select id="edit-dept" class="w-full p-3 bg-transparent font-bold text-slate-700 outline-none cursor-pointer">
-                                    <!-- Rempli par JS -->
-                                </select>
-                            </div>
-                        </div>
-        
-                        <!-- 2. BLOC : GESTION CONTRAT (Design Orange soft) -->
-                       <div id="edit-block-contract" class="p-6 bg-orange-50/50 rounded-xl border border-orange-100 space-y-4">
-            <p class="text-[10px] font-black text-orange-600 uppercase tracking-widest flex items-center gap-2">
-                <i class="fa-solid fa-file-contract"></i> Cycle de vie du Contrat
-            </p>
-        
-            <!-- Ligne 1 : Type et Date (Inchangée) -->
-            <div class="grid grid-cols-2 gap-4">
-                <div>
-                    <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-1">Durée / Type</label>
-                    <select id="edit-type-contrat" class="w-full p-3 bg-white border border-orange-100 rounded-xl text-xs font-bold text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-orange-200">
-                        <option value="365">CDI (1 an)</option>
-                        <option value="180">CDD (6 mois)</option>
-                        <option value="90">Essai (3 mois)</option>
-                        <option value="30">Stage</option>
-                        <option value="0">Freelance / Prestation</option>
+                    <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Rôle Système</label>
+                        <select id="edit-role" class="w-full bg-transparent font-bold text-blue-600 outline-none cursor-pointer">
+                            <!-- Rempli par JS -->
+                        </select>
+                    </div>
+                </div>
+                <div class="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                    <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Département / Service Affecté</label>
+                    <select id="edit-dept" class="w-full bg-transparent font-bold text-slate-800 outline-none">
+                        <!-- Rempli par JS -->
                     </select>
                 </div>
-                <div>
-                    <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-1">Date d'effet</label>
-                    <input type="date" id="edit-start-date" class="w-full p-3 bg-white border border-orange-100 rounded-xl text-xs font-bold text-slate-700 shadow-sm outline-none">
-                </div>
             </div>
-        
-            <!-- NOUVELLE LIGNE : SALAIRE ET INDEMNITÉS (Ajoutée) -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-orange-100/50">
-                <div>
-                    <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-1">Salaire Base (CFA)</label>
-                    <input type="number" id="edit-salaire-fixe" class="w-full p-3 bg-white border border-orange-100 rounded-xl text-xs font-bold text-blue-600 shadow-sm outline-none" placeholder="0">
-                </div>
-                <div>
-                    <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-1">Indem. Transport</label>
-                    <input type="number" id="edit-indemnite-transport" class="w-full p-3 bg-white border border-orange-100 rounded-xl text-xs font-bold text-slate-700 shadow-sm outline-none" placeholder="0">
-                </div>
-                <div>
-                    <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-1">Indem. Logement</label>
-                    <input type="number" id="edit-indemnite-logement" class="w-full p-3 bg-white border border-orange-100 rounded-xl text-xs font-bold text-slate-700 shadow-sm outline-none" placeholder="0">
-                </div>
-            </div>
-        
-            <!-- Checkbox d'initialisation (Inchangée) -->
-            <div class="mt-3 flex items-start gap-3 bg-white/60 p-3 rounded-xl border border-orange-100">
-                <input type="checkbox" id="edit-init-check" class="mt-1 w-5 h-5 text-orange-600 rounded-lg border-orange-200 focus:ring-orange-500 cursor-pointer">
-                <label for="edit-init-check" class="text-[10px] text-orange-800 leading-tight font-medium">
-                    <b>Forcer l'initialisation :</b> Réinitialise le contrat à la date choisie (Embauche ou Renouvellement).
-                </label>
-            </div>
-        </div>
 
-                <!-- 3. BLOC : HIÉRARCHIE (Design Indigo soft) -->
-                <div id="edit-block-hierarchy" class="p-6 bg-indigo-50/50 rounded-xl border border-indigo-100 space-y-4">
-                    <p class="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2">
-                        <i class="fa-solid fa-sitemap"></i> Management & Hiérarchie
-                    </p>
-                    <div class="space-y-4">
-                        <div>
-                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-1">Responsable Direct (N+1)</label>
-                            <select id="edit-manager" class="w-full p-3 bg-white border border-indigo-100 rounded-xl text-xs font-bold text-slate-700 shadow-sm outline-none">
-                                <option value="">-- Aucun / Autonome --</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-2 ml-1">Périmètre Géré (Scope)</label>
-                            <input type="text" id="edit-scope" class="w-full p-3 bg-white border border-indigo-100 rounded-xl text-xs font-bold text-slate-700 shadow-sm outline-none" placeholder="Ex: IT, Finance, Cotonou...">
-                        </div>
+            <!-- SECTION 2 : CONTRAT & RÉMUNÉRATION (BLOC ORANGE/VERT) -->
+            <div class="p-6 bg-orange-50/30 rounded-[2rem] border border-orange-100 space-y-6">
+                <p class="text-[10px] font-black text-orange-600 uppercase tracking-widest flex items-center gap-2">
+                    <i class="fa-solid fa-file-contract"></i> Conditions Contractuelles
+                </p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Type de Contrat</label>
+                        <select id="edit-type-contrat" class="w-full p-3 bg-white border border-orange-100 rounded-xl text-xs font-bold shadow-sm">
+                            <option value="365">CDI (1 an renouvelable)</option>
+                            <option value="180">CDD (6 mois)</option>
+                            <option value="90">Essai (3 mois)</option>
+                            <option value="30">Stage / Temporaire</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Date d'Effet</label>
+                        <input type="date" id="edit-start-date" class="w-full p-3 bg-white border border-orange-100 rounded-xl text-xs font-bold">
                     </div>
                 </div>
 
-                <!-- Bouton d'action massif -->
-                <button type="submit" class="w-full bg-slate-900 text-white py-5 rounded-[1.5rem] font-black text-xs uppercase tracking-[0.2em] shadow-xl hover:bg-blue-600 hover:shadow-blue-500/20 transition-all active:scale-95">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div class="md:col-span-1">
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Salaire Base (CFA)</label>
+                        <input type="number" id="edit-salaire-fixe" class="w-full p-3 bg-white border border-orange-100 rounded-xl text-xs font-black text-emerald-600 shadow-sm">
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Indem. Transport</label>
+                        <input type="number" id="edit-indemnite-transport" class="w-full p-3 bg-white border border-orange-100 rounded-xl text-xs font-bold">
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Indem. Logement</label>
+                        <input type="number" id="edit-indemnite-logement" class="w-full p-3 bg-white border border-orange-100 rounded-xl text-xs font-bold">
+                    </div>
+                </div>
+
+                <!-- Checkbox forçage -->
+                <label class="flex items-center gap-3 p-3 bg-white/60 rounded-xl border border-orange-100 cursor-pointer group">
+                    <input type="checkbox" id="edit-init-check" class="w-5 h-5 rounded border-orange-300 text-orange-600 focus:ring-orange-500">
+                    <span class="text-[10px] font-bold text-orange-800 uppercase">Réinitialiser totalement le contrat (Dates & Congés)</span>
+                </label>
+            </div>
+
+            <!-- SECTION 3 : HIÉRARCHIE (BLOC INDIGO) -->
+            <div class="p-6 bg-indigo-50/30 rounded-[2rem] border border-indigo-100 space-y-6">
+                <p class="text-[10px] font-black text-indigo-600 uppercase tracking-widest flex items-center gap-2">
+                    <i class="fa-solid fa-sitemap"></i> Management & Hiérarchie
+                </p>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Responsable Direct (N+1)</label>
+                        <select id="edit-manager" class="w-full p-3 bg-white border border-indigo-100 rounded-xl text-xs font-bold">
+                            <!-- Rempli par JS -->
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Périmètre (Scope)</label>
+                        <input type="text" id="edit-scope" class="w-full p-3 bg-white border border-indigo-100 rounded-xl text-xs font-bold" placeholder="Ex: IT, Commercial...">
+                    </div>
+                </div>
+                <div class="p-4 bg-white/50 rounded-2xl border border-indigo-100">
+                    <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Type d'activité (GPS)</label>
+                    <select id="edit-type" class="w-full bg-transparent font-bold text-indigo-700 outline-none">
+                        <option value="OFFICE">🏢 Bureau (Strict GPS)</option>
+                        <option value="MOBILE">🚗 Terrain (Liberté GPS)</option>
+                        <option value="FIXED">🏠 Agent Site (Fixe)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- ACTIONS FINALES -->
+            <div class="pt-4 flex gap-3">
+                <button type="button" onclick="closeEditModal()" class="flex-1 py-4 text-[10px] font-black uppercase text-slate-400 hover:text-slate-600 transition-all">Annuler</button>
+                <button type="submit" class="flex-[2] bg-slate-900 text-white py-4 rounded-2xl font-black text-xs uppercase tracking-[0.2em] shadow-2xl hover:bg-blue-600 transition-all active:scale-95">
                     Enregistrer les modifications
                 </button>
-            </form>
-        </div>
+            </div>
+        </form>
     </div>
+</div>
 
          <!-- MODAL SIGNATURE NUMÉRIQUE (VERSION PREMIUM UX) -->
 <div id="contract-modal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-md hidden flex items-center justify-center z-[200] p-4 transition-all duration-300">
