@@ -525,7 +525,55 @@ export async function saveCrmField() {
 
 
 
+function createLeadCard(lead, value) {
+    const dateMaj = new Date(lead.updated_at || lead.created_at).toLocaleDateString('fr-FR', {day:'2-digit', month:'short'});
+    const initial = lead.nom_client ? lead.nom_client.charAt(0).toUpperCase() : '?';
+    
+    // --- LOGIQUE DE RELANCE ---
+    const nextRelance = lead.data.date_relance; // On cherche cette clé dans le JSONB
+    let relanceHtml = '';
+    let isOverdue = false;
 
+    if (nextRelance) {
+        const today = new Date().toISOString().split('T')[0];
+        isOverdue = nextRelance < today;
+        const dateFmt = new Date(nextRelance).toLocaleDateString('fr-FR', {day:'numeric', month:'short'});
+        
+        relanceHtml = `
+            <div class="flex items-center gap-1.5 ${isOverdue ? 'text-red-500 animate-pulse' : 'text-slate-400'}">
+                <i class="fa-regular fa-clock text-[10px]"></i>
+                <span class="text-[9px] font-black uppercase">${isOverdue ? 'Retard' : 'Relance'} : ${dateFmt}</span>
+            </div>
+        `;
+    }
+
+    const card = document.createElement('div');
+    // Si en retard, on ajoute une bordure rouge discrète
+    card.className = `bg-white p-4 rounded-xl border-2 ${isOverdue ? 'border-red-100 bg-red-50/10' : 'border-slate-100'} shadow-sm cursor-grab hover:shadow-md transition-all active:cursor-grabbing relative group animate-fadeIn`;
+    card.dataset.id = lead.id;
+    
+    card.innerHTML = `
+        <div class="flex justify-between items-start mb-2">
+            <div class="w-7 h-7 rounded-lg bg-slate-900 text-white flex items-center justify-center text-[10px] font-black">${initial}</div>
+            <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onclick="window.openLeadModal('${lead.id}')" class="p-1.5 text-slate-400 hover:text-blue-600"><i class="fa-solid fa-pen-to-square text-[10px]"></i></button>
+            </div>
+        </div>
+        
+        <h4 class="font-black text-xs text-slate-800 leading-tight mb-2 truncate">${lead.nom_client}</h4>
+        
+        <div class="flex justify-between items-center mb-3">
+            <span class="text-[10px] font-black text-emerald-600">${value > 0 ? new Intl.NumberFormat('fr-FR').format(value) + ' F' : ''}</span>
+            ${lead.data.files ? '<i class="fa-solid fa-paperclip text-[10px] text-slate-300"></i>' : ''}
+        </div>
+
+        <div class="pt-3 border-t border-slate-50 flex justify-between items-center">
+            <span class="text-[8px] text-slate-300 font-medium italic">Maj: ${dateMaj}</span>
+            ${relanceHtml}
+        </div>
+    `;
+    return card;
+}
 
 // Affiche ou cache le champ des options selon le type choisi
 window.toggleOptionsInput = (type) => {
