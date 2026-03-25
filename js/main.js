@@ -232,10 +232,6 @@ window.addInteraction = CRM.addInteraction;
 window.openCrmSettings = CRM.openCrmSettings;
 window.saveCrmField = CRM.saveCrmField;
 
-// Ajoute l'appel dans switchView (vers la ligne 125)
-if (v === "crm") {
-    window.initCRM();
-}
 
 // --- Divers / Utilitaires ---
 window.closeEditor = () => {
