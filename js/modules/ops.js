@@ -152,18 +152,18 @@ export function stopAllCameras() {
 export async function handleClockInOut() {
     const userId = AppState.currentUser.id;
     const actionTime = new Date().toISOString(); 
-    const L = AppState.labels || { visit_singular: "Visite", target_singular: "Contact", product_plural: "Produits" };
+    const L = AppState.labels || { visit_singular: "Visite", target_singular: "Contact", product_plural: "Produits", location_singular: "Site" };
 
     const btn = document.getElementById('btn-clock');
     const action = btn.dataset.action; 
     
-    // Réinitialisation du State global
+    // Réinitialisation complète du State global
     AppState.formResult = null; 
     AppState.outcome = null;
     AppState.report = null;
     AppState.proofBlob = null; 
     AppState.isLastExit = false;
-    AppState.presentedProducts = []; 
+    AppState.presentedProducts =[]; 
     AppState.prescripteur_id = null;
     AppState.contact_nom_libre = null;
     
@@ -189,16 +189,16 @@ export async function handleClockInOut() {
         if (video) video.srcObject = null;
     };
 
-    // --- 1. LOGIQUE DE SORTIE MOBILE (MODALE) ---
+    // --- 1. LOGIQUE DE SORTIE MOBILE (MODALE COMPLÈTE) ---
     if (action === 'CLOCK_OUT' && isMobile) {
         Swal.fire({ title: 'Chargement...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
 
-        let products = AppState.allProductsData || [];
-        let prescripteurs = AppState.allPrescripteurs || [];
+        let products = AppState.allProductsData ||[];
+        let prescripteurs = AppState.allPrescripteurs ||[];
 
         if (navigator.onLine && (products.length === 0 || prescripteurs.length === 0)) {
             try {
-                const [prodRes, presRes] = await Promise.all([
+                const[prodRes, presRes] = await Promise.all([
                     secureFetch(`${SIRH_CONFIG.apiBaseUrl}/list-products`),
                     secureFetch(`${SIRH_CONFIG.apiBaseUrl}/list-prescripteurs`)
                 ]);
@@ -281,9 +281,11 @@ export async function handleClockInOut() {
                 navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
                     .then(s => { AppState.proofStream = s; if (video) video.srcObject = s; })
                     .catch(err => console.error("Caméra bloquée"));
+
                 document.getElementById('swal-prescripteur').addEventListener('change', (e) => {
                     document.getElementById('container-autre-nom').classList.toggle('hidden', e.target.value !== 'autre');
                 });
+
                 document.getElementById('btn-snap').onclick = () => {
                     if (!video || video.videoWidth === 0) return Swal.fire('Patientez', 'La caméra s\'initialise...', 'info');
                     const canvas = document.getElementById('proof-canvas');
@@ -296,12 +298,17 @@ export async function handleClockInOut() {
                         imgPreview.classList.remove('hidden'); 
                     }, 'image/jpeg', 0.8);
                 };
+
                 const signCanvas = document.getElementById('visit-signature-pad');
                 window.visitSignPad = new window.SignaturePad(signCanvas, { backgroundColor: 'rgba(255, 255, 255, 0)', penColor: 'rgb(0, 0, 128)' });    
+
                 window.switchProofMode = (mode) => {
                     const isPhoto = mode === 'photo';
                     if (!isPhoto) { stopAllCameras(); }
-                    else { navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } }).then(s => { AppState.proofStream = s; const v = document.getElementById('proof-video'); if (v) v.srcObject = s; }); }
+                    else { 
+                        navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
+                        .then(s => { AppState.proofStream = s; const v = document.getElementById('proof-video'); if (v) v.srcObject = s; }); 
+                    }
                     document.getElementById('proof-photo-area').classList.toggle('hidden', !isPhoto);
                     document.getElementById('proof-sign-area').classList.toggle('hidden', isPhoto);
                     document.getElementById('btn-mode-photo').className = isPhoto ? 'flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase bg-white shadow-sm text-blue-600' : 'flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase text-slate-500';
@@ -313,24 +320,38 @@ export async function handleClockInOut() {
                 try {
                     let finalProof = AppState.proofBlob || null;
                     const signArea = document.getElementById('proof-sign-area');
+
                     if (signArea && !signArea.classList.contains('hidden') && window.visitSignPad && !window.visitSignPad.isEmpty()) {
                         const dataUrl = window.visitSignPad.toDataURL('image/png');
-                        const arr = dataUrl.split(','), mime = arr[0].match(/:(.*?);/)[1], bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+                        const arr = dataUrl.split(',');
+                        const mime = arr[0].match(/:(.*?);/)[1];
+                        const bstr = atob(arr[1]);
+                        let n = bstr.length;
+                        const u8arr = new Uint8Array(n);
                         while(n--) u8arr[n] = bstr.charCodeAt(n);
                         finalProof = new Blob([u8arr], {type: mime});
                     }
+
+                    const outcomeEl = document.getElementById('swal-outcome');
+                    const reportEl = document.getElementById('swal-report');
+                    const lastExitEl = document.getElementById('last-exit-check');
+                    const prescripteurEl = document.getElementById('swal-prescripteur');
+                    const nomLibreEl = document.getElementById('swal-nom-libre');
+
+                    // On retourne l'objet proprement mappé
                     return {
-                        outcome: document.getElementById('swal-outcome')?.value || 'VU',
-                        report: document.getElementById('swal-report')?.value || '',
-                        isLastExit: document.getElementById('last-exit-check')?.checked || false,
-                        prescripteur_id: document.getElementById('swal-prescripteur')?.value || null,
-                        contact_nom_libre: document.getElementById('swal-nom-libre')?.value || null,
-                        selectedProducts: Array.from(document.querySelectorAll('input[name="presented_prods"]:checked')).map(i => i.dataset.name),
+                        outcome: outcomeEl?.value || 'VU',
+                        report: reportEl?.value || '',
+                        isLastExit: lastExitEl?.checked || false,
+                        prescripteur_id: prescripteurEl?.value || null,
+                        contact_nom_libre: nomLibreEl?.value || null,
+                        presentedProducts: Array.from(document.querySelectorAll('input[name="presented_prods"]:checked')).map(i => i.dataset.name),
                         proofFile: finalProof 
                     };
                 } catch (err) {
-                    Swal.showValidationMessage("Erreur lors de la capture des données.");
-                    return false;
+                    console.error("❌ Erreur preConfirm :", err);
+                    Swal.showValidationMessage("Une erreur technique empêche la validation.");
+                    return false; 
                 }
             }
         }); 
@@ -338,11 +359,12 @@ export async function handleClockInOut() {
         if (!swalRes.isConfirmed) return;
         AppState.formResult = swalRes.value;
 
+        // Délai de transition obligatoire pour éviter les blocages SweetAlert
         stopAllCameras();
-        await new Promise(resolve => setTimeout(resolve, 150));
+        await new Promise(resolve => setTimeout(resolve, 200));
     }
 
-    // --- 3. POINTAGE GPS & ENVOI ---
+    // --- 2. POINTAGE GPS & ENVOI ---
     Swal.fire({ title: 'Vérification...', text: 'Traitement du pointage...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
 
     try {
@@ -350,23 +372,35 @@ export async function handleClockInOut() {
         let currentGps = "0,0";
 
         try {
+            // maximumAge: 0 force le GPS à refaire une mesure en temps réel
             const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 15000, enableHighAccuracy: true, maximumAge: 0 }));
             currentGps = `${pos.coords.latitude},${pos.coords.longitude}`;
-        } catch (e) { currentGps = "GPS_DISABLED"; }
+        } catch (e) { 
+            console.warn("GPS non disponible :", e.message);
+            currentGps = "GPS_DISABLED"; 
+        }
 
         if (navigator.onLine) {
             try { const ipRes = await fetch('https://api.ipify.org?format=json').then(r => r.json()); currentIp = ipRes.ip; } catch(e) {}
         }
 
-        const payloadObj = { id: userId, action: action, gps: currentGps, ip: currentIp, agent: AppState.currentUser.nom, time: actionTime };
+        const payloadObj = { 
+            id: userId, 
+            action: action, 
+            gps: currentGps, 
+            ip: currentIp, 
+            agent: AppState.currentUser.nom, 
+            time: actionTime 
+        };
 
+        // Enrichissement du payload si c'est une sortie Mobile
         if (action === 'CLOCK_OUT' && isMobile && AppState.formResult) {
             const fr = AppState.formResult;
             payloadObj.outcome = fr.outcome;
             payloadObj.report = fr.report;
             payloadObj.prescripteur_id = (fr.prescripteur_id && fr.prescripteur_id !== 'autre') ? fr.prescripteur_id : null;
             payloadObj.contact_nom_libre = fr.contact_nom_libre;
-            payloadObj.presentedProducts = fr.selectedProducts || [];
+            payloadObj.presentedProducts = fr.presentedProducts ||[];
             payloadObj.schedule_id = schedule_id;
             payloadObj.forced_location_id = forced_location_id;
             payloadObj.is_last_exit = fr.isLastExit ? 'true' : 'false';
@@ -378,20 +412,58 @@ export async function handleClockInOut() {
             }
         }
 
+        // --- 3. GESTION HORS LIGNE INTELLIGENTE ---
         if (!navigator.onLine) {
+            console.log("📴 Mode Hors-ligne détecté. Validation locale...");
+            const cachedZones = JSON.parse(localStorage.getItem("sirh_gps_offline_cache") || "[]");
+            let detectedZone = "Zone Mobile";
+            let isInsideAuthorizedZone = false;
+
+            if (currentGps !== "GPS_DISABLED") {
+                const [uLat, uLon] = currentGps.split(',').map(parseFloat);
+                for (let z of cachedZones) {
+                    const d = getDistance(uLat, uLon, z.lat, z.lon);
+                    let effectiveRadius = z.isOffice ? 1500 : z.rayon;
+                    if (d <= effectiveRadius) {
+                        isInsideAuthorizedZone = true;
+                        detectedZone = z.nom;
+                        break; 
+                    }
+                }
+            }
+
+            if (!isInsideAuthorizedZone && !isMobile) {
+                stopAllCameras();
+                return Swal.fire({ icon: 'error', title: 'Position Refusée', text: 'Même hors-ligne, vous devez être sur un site autorisé pour pointer.' });
+            }
+
+            payloadObj.zone_detectee = detectedZone; 
+            payloadObj.is_offline = true;            
+
             const queue = JSON.parse(localStorage.getItem("sirh_offline_queue") || "[]");
             queue.push(payloadObj);
             localStorage.setItem("sirh_offline_queue", JSON.stringify(queue));
+
+            localStorage.removeItem('active_mission_context');
+            let nextState = (action === 'CLOCK_IN') ? 'IN' : 'OUT';
+            localStorage.setItem(`clock_status_${userId}`, nextState);
+            if (payloadObj.is_last_exit === 'true' || !isMobile) localStorage.setItem(`clock_finished_${userId}`, 'true');
+
             stopAllCameras();
-            if(typeof window.updateClockUI === 'function') window.updateClockUI((action === 'CLOCK_IN') ? 'IN' : 'OUT');
-            return Swal.fire({ icon: 'info', title: 'Mode Hors Ligne', text: 'Pointage enregistré localement.' });
+            if(typeof window.updateClockUI === 'function') window.updateClockUI(nextState);
+
+            return Swal.fire({ icon: 'info', title: 'Mode Hors Ligne', text: `Votre position (${detectedZone}) a été validée localement.` });
         }
 
+        // --- 4. ENVOI AU SERVEUR ---
+        console.log(`🔎 Envoi pointage JSON pour [${userId}] - Action: [${action}]`);
+        
         const response = await secureFetch(URL_CLOCK_ACTION, { 
             method: 'POST', 
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payloadObj) 
         });
+        
         const resData = await response.json();
 
         if (response.ok) {
@@ -407,7 +479,6 @@ export async function handleClockInOut() {
         Swal.fire('Erreur', e.message, 'error');
     }
 }
-
   
 export async function fetchMobileLocations() {
   const container = document.getElementById("locations-grid");
