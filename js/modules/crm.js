@@ -25,9 +25,7 @@ export async function initCRM() {
     }
 }
 
- /**
- * Rendu complet du Kanban CRM avec Calcul de Valeur et Graphique
- */
+
 /**
  * Rendu dynamique du Pipeline CRM (Kanban Haute Performance)
  */
@@ -130,78 +128,7 @@ export async function renderKanban() {
 }
 
 
-/**
- * Helper : Rendu du Dashboard Financier et Graphique Dynamique
- */
-function renderCrmDashboard(totalValue, stageStats, stages) {
-    let dashContainer = document.getElementById('crm-dashboard-stats');
-    if (!dashContainer) {
-        dashContainer = document.createElement('div');
-        dashContainer.id = 'crm-dashboard-stats';
-        dashContainer.className = "grid grid-cols-1 md:grid-cols-3 gap-4 mb-8 animate-fadeIn";
-        document.getElementById('view-crm').insertBefore(dashContainer, document.querySelector('.flex-1.overflow-x-auto'));
-    }
 
-    const fmt = (val) => new Intl.NumberFormat('fr-FR').format(val) + ' F';
-    
-    // Identification de l'étape "Gagné" pour le KPI de droite
-    const wonStage = stages.find(s => s.label.toLowerCase().includes('gagn')) || { label: 'Gagné' };
-    const wonValue = stageStats[wonStage.label]?.value || 0;
-
-    dashContainer.innerHTML = `
-        <div class="bg-slate-900 p-5 rounded-[1.5rem] text-white shadow-xl relative overflow-hidden group">
-            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest relative z-10">Valeur Totale Pipeline</p>
-            <h3 class="text-2xl font-black mt-1 relative z-10">${fmt(totalValue)}</h3>
-            <i class="fa-solid fa-vault absolute -right-2 -bottom-2 text-5xl opacity-10 group-hover:scale-110 transition-transform"></i>
-        </div>
-        <div class="bg-white p-5 rounded-[1.5rem] border border-slate-100 shadow-sm relative overflow-hidden group">
-            <p class="text-[9px] font-black text-slate-400 uppercase tracking-widest">Dossiers Actifs</p>
-            <h3 class="text-2xl font-black text-blue-600 mt-1">${AppState.crmLeads.length}</h3>
-            <i class="fa-solid fa-briefcase absolute -right-2 -bottom-2 text-5xl text-slate-50 group-hover:rotate-12 transition-transform"></i>
-        </div>
-        <div class="bg-emerald-500 p-5 rounded-[1.5rem] text-white shadow-lg shadow-emerald-200 relative overflow-hidden group">
-            <p class="text-[9px] font-black text-emerald-100 uppercase tracking-widest">Chiffre Gagné</p>
-            <h3 class="text-2xl font-black mt-1">${fmt(wonValue)}</h3>
-            <i class="fa-solid fa-trophy absolute -right-2 -bottom-2 text-5xl opacity-20 group-hover:-rotate-12 transition-transform"></i>
-        </div>
-    `;
-
-    // Graphique Chart.js
-    let chartArea = document.getElementById('crm-chart-area');
-    if (!chartArea) {
-        chartArea = document.createElement('div');
-        chartArea.id = 'crm-chart-area';
-        chartArea.className = "bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm mb-8 animate-fadeIn";
-        chartArea.innerHTML = `<div style="height: 200px;"><canvas id="crmDynamicChart"></canvas></div>`;
-        document.getElementById('view-crm').insertBefore(chartArea, document.querySelector('.flex-1.overflow-x-auto'));
-    }
-
-    const ctx = document.getElementById('crmDynamicChart').getContext('2d');
-    if (window.myCrmChart) window.myCrmChart.destroy();
-
-    window.myCrmChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: stages.map(s => s.label),
-            datasets: [{
-                data: stages.map(s => stageStats[s.label]?.value || 0),
-                backgroundColor: stages.map(s => s.color + 'CC'),
-                borderColor: stages.map(s => s.color),
-                borderWidth: 2,
-                borderRadius: 8,
-                barThickness: 45
-            }]
-        },
-        options: {
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { display: false } },
-                x: { grid: { display: false }, ticks: { font: { size: 9, weight: 'bold' } } }
-            }
-        }
-    });
-}
 // --- 3. LE GLISSER-DÉPOSER (SORTABLE.JS) ---
 export function initDragAndDrop() {
     const columns = document.querySelectorAll('.kanban-col');
