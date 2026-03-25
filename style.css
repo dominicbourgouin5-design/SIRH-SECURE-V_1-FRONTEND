@@ -586,3 +586,14 @@ body.offline-mode::after {
     box-shadow: 0 4px 15px rgba(0,0,0,0.2);
     letter-spacing: 1px;
 }😒😒
+
+
+
+.kanban-col {
+    min-height: 400px;
+    transition: background-color 0.3s ease;
+}
+.kanban-col.sortable-ghost {
+    background-color: rgba(59, 130, 246, 0.1) !important;
+    border: 2px dashed #3b82f6 !important;
+}
