@@ -254,3 +254,120 @@ export async function addInteraction(leadId) {
         Swal.fire("Erreur", "Impossible d'ajouter la note", "error");
     }
 }
+
+
+
+
+
+// ============================================================
+// 7. LE "NO-CODE BUILDER" (Configuration des champs)
+// ============================================================
+
+export async function openCrmSettings() {
+    // 1. Sécurité : Seul un Admin peut modifier la structure
+    if (!AppState.currentUser.permissions.can_manage_config) {
+        return Swal.fire("Accès refusé", "Seul un administrateur peut configurer le CRM.", "error");
+    }
+
+    // 2. Affichage des champs existants
+    let fieldsHtml = '';
+    if (AppState.crmFields && AppState.crmFields.length > 0) {
+        fieldsHtml = AppState.crmFields.map(f => `
+            <div class="flex justify-between items-center p-3 bg-white border border-slate-200 rounded-xl mb-2 shadow-sm">
+                <div>
+                    <span class="font-bold text-xs text-slate-800">${f.label}</span>
+                    <span class="text-[9px] text-slate-400 font-mono ml-2">(${f.key_name})</span>
+                </div>
+                <span class="bg-indigo-50 text-indigo-600 px-2 py-1 rounded text-[9px] font-black uppercase tracking-widest border border-indigo-100">${f.field_type}</span>
+            </div>
+        `).join('');
+    } else {
+        fieldsHtml = '<div class="p-4 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-center text-slate-400 text-xs italic">Aucun champ personnalisé créé.</div>';
+    }
+
+    // 3. Modale de Configuration
+    Swal.fire({
+        title: '<div class="text-left text-xl font-black uppercase tracking-tight text-slate-800"><i class="fa-solid fa-sliders text-sky-500 mr-2"></i> Configuration CRM</div>',
+        html: `
+            <div class="text-left mt-4">
+                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 ml-1">Champs Actuels</p>
+                <div class="max-h-48 overflow-y-auto custom-scroll pr-2 mb-6 bg-slate-50 p-3 rounded-2xl border border-slate-100 shadow-inner">
+                    ${fieldsHtml}
+                </div>
+
+                <div class="p-6 bg-sky-50 rounded-2xl border border-sky-100 relative overflow-hidden">
+                    <!-- Déco visuelle -->
+                    <i class="fa-solid fa-wand-magic-sparkles absolute -right-4 -bottom-4 text-6xl text-sky-500 opacity-10"></i>
+                    
+                    <p class="text-[10px] font-black text-sky-600 uppercase tracking-widest mb-4 relative z-10">Créer une nouvelle colonne</p>
+                    
+                    <div class="relative z-10 space-y-4">
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1 ml-1">Nom (ex: Budget Estimé)</label>
+                            <input id="new-field-label" class="w-full p-3 bg-white border border-sky-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-sky-500 shadow-sm" placeholder="Nom du champ...">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-[9px] font-black text-slate-400 uppercase mb-1 ml-1">Type de donnée</label>
+                            <select id="new-field-type" class="w-full p-3 bg-white border border-sky-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-sky-500 shadow-sm cursor-pointer">
+                                <option value="text">Texte libre (Notes, Ville...)</option>
+                                <option value="number">Nombre (Montant, Quantité...)</option>
+                                <option value="date">Date (Échéance, RDV...)</option>
+                            </select>
+                        </div>
+
+                        <button onclick="window.saveCrmField()" class="w-full py-4 mt-2 bg-slate-900 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-xl hover:bg-sky-500 transition-all active:scale-95">
+                            Ajouter ce champ au CRM
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `,
+        showConfirmButton: false,
+        showCloseButton: true,
+        width: '600px',
+        customClass: { popup: 'rounded-[2rem]' }
+    });
+}
+
+export async function saveCrmField() {
+    const label = document.getElementById('new-field-label').value.trim();
+    const type = document.getElementById('new-field-type').value;
+
+    if (!label) {
+        // Animation d'erreur sur l'input
+        const input = document.getElementById('new-field-label');
+        input.classList.add('ring-2', 'ring-red-500', 'border-red-500');
+        setTimeout(() => input.classList.remove('ring-2', 'ring-red-500', 'border-red-500'), 1500);
+        return;
+    }
+
+    // 1. Formatage magique de la clé (Ex: "Budget Estimé" devient "budget_estime")
+    const key_name = label.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '_');
+
+    Swal.fire({ title: 'Génération du champ...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+
+    try {
+        const response = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/save-crm-field`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ label, key_name, field_type: type })
+        });
+
+        if (response.ok) {
+            Swal.fire({
+                icon: 'success', title: 'Champ Créé !', 
+                text: `La colonne "${label}" est maintenant disponible sur toutes les fiches clients.`,
+                confirmButtonColor: '#0ea5e9'
+            }).then(() => {
+                // On recharge le CRM pour actualiser les données en mémoire
+                initCRM();
+            });
+        } else {
+            const err = await response.json();
+            throw new Error(err.error || "Erreur serveur");
+        }
+    } catch (e) {
+        Swal.fire("Erreur", e.message, "error");
+    }
+}
