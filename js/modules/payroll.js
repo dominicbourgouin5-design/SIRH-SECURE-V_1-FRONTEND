@@ -71,6 +71,9 @@ export async function loadAccountingView(page = 1) {
         console.error("Format de réponse inattendu:", result);
         employeesToPay = [];
     }
+
+    console.log("📊 Métadonnées pagination:", meta);
+    console.log("📊 Nombre d'employés chargés:", employeesToPay.length);
     
     // Sauvegarder les métadonnées pour la pagination
     currentPayrollMeta = meta;
@@ -189,29 +192,42 @@ export async function loadAccountingView(page = 1) {
  * Affiche la barre de pagination pour la paie
  */
 function renderPayrollPagination() {
+  console.log("🔍 renderPayrollPagination appelée", currentPayrollMeta);
+  
+  // Chercher un conteneur existant
   let paginationContainer = document.getElementById("payroll-pagination");
   
-  // Créer le conteneur s'il n'existe pas
+  // Si le conteneur n'existe pas, on le crée au bon endroit
   if (!paginationContainer) {
-    const tableContainer = document.querySelector("#view-accounting .bg-white.rounded-xl");
-    if (tableContainer && tableContainer.parentNode) {
+    // Chercher le conteneur du tableau
+    const tableContainer = document.querySelector("#view-accounting .overflow-x-auto");
+    const parentDiv = document.querySelector("#view-accounting .bg-white.rounded-xl");
+    
+    if (parentDiv && !document.getElementById("payroll-pagination")) {
       const div = document.createElement("div");
       div.id = "payroll-pagination";
       div.className = "px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center";
-      tableContainer.parentNode.insertBefore(div, tableContainer.nextSibling);
+      parentDiv.appendChild(div);
       paginationContainer = div;
+      console.log("✅ Conteneur pagination créé");
     }
   }
   
-  if (!paginationContainer) return;
+  // Si toujours pas de conteneur, on sort
+  if (!paginationContainer) {
+    console.warn("⚠️ Impossible de trouver ou créer le conteneur de pagination");
+    return;
+  }
   
   // Cacher la pagination si une seule page
   if (currentPayrollMeta.last_page <= 1) {
     paginationContainer.innerHTML = '';
     paginationContainer.style.display = 'none';
+    console.log("📄 Une seule page, pagination cachée");
     return;
   }
   
+  // Afficher la pagination
   paginationContainer.style.display = 'flex';
   paginationContainer.innerHTML = `
     <div class="flex justify-between items-center w-full">
@@ -232,7 +248,9 @@ function renderPayrollPagination() {
       </button>
     </div>
   `;
+  console.log("📄 Pagination affichée");
 }
+
 
 export function resetAccountingFilters() {
   document.getElementById("search-accounting").value = "";
