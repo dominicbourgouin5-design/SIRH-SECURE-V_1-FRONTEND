@@ -40,7 +40,7 @@ export async function loadAccountingView(page = 1) {
 
   try {
     // 🔥 REQUÊTE AVEC PAGINATION
-    const url = `${SIRH_CONFIG.apiBaseUrl}/read-payroll-full?page=${page}&limit=2&agent=${encodeURIComponent(filters.agent)}&type=${filters.type}&dept=${encodeURIComponent(filters.dept)}&status=${filters.status}&role=${encodeURIComponent(filters.role)}`;
+    const url = `${SIRH_CONFIG.apiBaseUrl}/read-payroll-full?page=${page}&limit=1&agent=${encodeURIComponent(filters.agent)}&type=${filters.type}&dept=${encodeURIComponent(filters.dept)}&status=${filters.status}&role=${encodeURIComponent(filters.role)}`;
     
     const [resEmp, resRules, resAuto] = await Promise.all([
       secureFetch(url),
