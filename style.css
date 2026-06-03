@@ -597,3 +597,24 @@ body.offline-mode::after {
     background-color: rgba(59, 130, 246, 0.1) !important;
     border: 2px dashed #3b82f6 !important;
 }
+
+/* Mode hors-ligne - bandeau permanent */
+body.offline-mode::before {
+  content: "📡 MODE HORS-LIGNE - Données en cache uniquement";
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: #f59e0b;
+  color: white;
+  text-align: center;
+  padding: 6px;
+  font-size: 10px;
+  font-weight: bold;
+  z-index: 9999;
+  letter-spacing: 1px;
+}
+
+body.offline-mode header {
+  margin-top: 28px;
+}
