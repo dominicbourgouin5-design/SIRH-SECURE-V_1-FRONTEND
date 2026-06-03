@@ -2718,3 +2718,38 @@ export async function syncOfflineData() {
         Swal.fire('Échec de la synchro', 'Vérifiez votre connexion et réessayez.', 'error');
     }
 }
+
+
+// ============================================================
+// FONCTIONS DE CACHE POUR MODE HORS-LIGNE (GPS)
+// ============================================================
+
+// Sauvegarde des zones GPS pour le mode hors-ligne
+export function cacheZonesLocally(zones) {
+  try {
+    const cacheData = {
+      data: zones,
+      timestamp: Date.now(),
+      expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000)
+    };
+    localStorage.setItem('sirh_zones_cache', JSON.stringify(cacheData));
+    console.log("💾 Zones GPS mises en cache localement");
+  } catch (e) {
+    console.warn("Erreur cache GPS:", e);
+  }
+}
+
+export function getCachedZones() {
+  try {
+    const cached = localStorage.getItem('sirh_zones_cache');
+    if (!cached) return null;
+    const cacheData = JSON.parse(cached);
+    if (cacheData.expiresAt < Date.now()) {
+      localStorage.removeItem('sirh_zones_cache');
+      return null;
+    }
+    return cacheData.data;
+  } catch (e) {
+    return null;
+  }
+}
