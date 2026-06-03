@@ -1,5 +1,5 @@
-const CACHE_NAME = "sirh-cache-v4"; // Passage en V4 pour forcer le nettoyage
-const ASSETS_TO_CACHE = [
+const CACHE_NAME = "sirh-cache-v6";
+const STATIC_ASSETS = [
   "./",
   "./index.html",
   "./manifest.json",
@@ -17,21 +17,22 @@ const ASSETS_TO_CACHE = [
   "./js/modules/leaves.js",
   "./js/modules/ops.js",
   "./js/modules/payroll.js",
-  "./js/modules/ui.js"
+  "./js/modules/ui.js",
+  "./js/modules/crm.js"
 ];
 
-// 1. INSTALLATION : Mise en cache initiale
+// Installation
 self.addEventListener("install", (e) => {
   self.skipWaiting();
   e.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log("📂 SW: Mise en cache des assets");
-      return cache.addAll(ASSETS_TO_CACHE);
+      console.log("📦 SW: Mise en cache des assets");
+      return cache.addAll(STATIC_ASSETS);
     })
   );
 });
 
-// 2. ACTIVATION : Nettoyage des anciens caches
+// Activation - nettoyage des anciens caches
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -48,67 +49,68 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
-// 3. STRATÉGIE DE FETCH
+// Stratégie de fetch : Cache d'abord, puis réseau
 self.addEventListener("fetch", (e) => {
-  // SÉCURITÉ 1 : On ne gère que les requêtes GET (le cache ne supporte pas POST/PUT)
-  if (e.request.method !== 'GET') return;
-
-  // SÉCURITÉ 2 : On laisse passer les requêtes API sans y toucher
-  if (e.request.url.includes('/api/')) return;
-
-  // STRATÉGIE : Stale-While-Revalidate (Propre)
-  e.respondWith(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.match(e.request).then((cachedResponse) => {
-        
-        // On lance la requête réseau en arrière-plan
-        const fetchPromise = fetch(e.request).then((networkResponse) => {
-          // On vérifie si la réponse est valide avant de la mettre en cache
+  const url = new URL(e.request.url);
+  
+  // Pour les requêtes API GET (lecture des données)
+  if (e.request.method === 'GET' && url.pathname.includes('/api/')) {
+    e.respondWith(
+      caches.open(CACHE_NAME).then(async (cache) => {
+        try {
+          // On tente le réseau d'abord pour les données fraîches
+          const networkResponse = await fetch(e.request);
           if (networkResponse && networkResponse.status === 200) {
             cache.put(e.request, networkResponse.clone());
           }
           return networkResponse;
-        }).catch(() => {
-          // Optionnel : ici on pourrait renvoyer une page "Offline" personnalisée
-        });
-
-        // On renvoie la version cachée immédiatement, ou la version réseau si pas en cache
-        return cachedResponse || fetchPromise;
+        } catch (error) {
+          // Si hors-ligne, on sert le cache
+          const cachedResponse = await cache.match(e.request);
+          if (cachedResponse) {
+            console.log("📡 SW: Service hors-ligne - données depuis cache");
+            return cachedResponse;
+          }
+          // Si pas de cache, on retourne une erreur
+          return new Response(JSON.stringify({ error: "Hors ligne", data: [] }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      })
+    );
+    return;
+  }
+  
+  // Pour les fichiers statiques (CSS, JS, HTML)
+  e.respondWith(
+    caches.match(e.request).then((cachedResponse) => {
+      return cachedResponse || fetch(e.request).catch(() => {
+        // Si c'est une page HTML et qu'on est hors-ligne, on sert la page d'accueil
+        if (e.request.headers.get('accept').includes('text/html')) {
+          return caches.match('./index.html');
+        }
+        return new Response('Hors ligne', { status: 503 });
       });
     })
   );
 });
 
-// 4. NOTIFICATIONS PUSH
-self.addEventListener('notificationclick', (event) => {
-    event.notification.close();
-    event.waitUntil(clients.openWindow('/'));
+// Notifications Push
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  const data = event.data.json();
+  const options = {
+    body: data.body,
+    icon: 'https://cdn-icons-png.flaticon.com/512/9752/9752284.png',
+    badge: 'https://cdn-icons-png.flaticon.com/512/9752/9752284.png',
+    vibrate: [100, 50, 100],
+    data: { url: data.url || '/' }
+  };
+  event.waitUntil(self.registration.showNotification(data.title, options));
 });
 
-
-
-// --- ÉCOUTE DES NOTIFICATIONS PUSH ---
-self.addEventListener('push', (event) => {
-    if (!event.data) return;
-
-    // Le serveur envoie les infos en JSON
-    const data = event.data.json(); 
-
-    const options = {
-        body: data.body,
-        icon: 'https://cdn-icons-png.flaticon.com/512/9752/9752284.png',
-        badge: 'https://cdn-icons-png.flaticon.com/512/9752/9752284.png',
-        vibrate: [100, 50, 100], // Vibration type WhatsApp
-        data: {
-            url: data.url || '/'
-        },
-        actions: [
-            { action: 'open', title: 'Voir maintenant' },
-            { action: 'close', title: 'Ignorer' }
-        ]
-    };
-
-    event.waitUntil(
-        self.registration.showNotification(data.title, options)
-    );
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(clients.openWindow(event.notification.data.url || '/'));
 });
