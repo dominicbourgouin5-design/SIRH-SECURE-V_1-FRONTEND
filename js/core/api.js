@@ -1,44 +1,33 @@
 // core/api.js
 
 export async function secureFetch(url, options = {}) {
-  if (!navigator.onLine) {
-    throw new Error("Vous êtes hors ligne. Vérifiez votre connexion internet.");
-  }
-
+  // Version avec support hors-ligne
   const token = localStorage.getItem("sirh_token");
   
-  // 1. On clone les headers pour pouvoir les modifier en toute sécurité
+  // 1. On clone les headers
   const headers = { ...options.headers };
 
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // =================================================================
-  // 🔥 LE SECRET QUI CORRIGE L'ERREUR "ID MANQUANT / BAD REQUEST" 🔥
-  // =================================================================
   if (options.body) {
     if (options.body instanceof FormData) {
-      // Si on envoie un formulaire (avec ou sans photo), le navigateur DOIT 
-      // gérer le Content-Type lui-même pour ajouter la balise "boundary".
-      // On s'assure donc qu'il n'y a pas de Content-Type forcé.
       delete headers["Content-Type"];
     } else {
-      // Si on envoie du texte pur (le fameux JSON de l'Entrée),
-      // On OBLIGE le serveur à le lire comme du JSON, sinon il l'ignore.
       headers["Content-Type"] = "application/json";
     }
   }
-  // =================================================================
 
   const TIMEOUT_MS = 120000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
   try {
+    // Tentative réseau
     const response = await fetch(url, {
       ...options,
-      headers: headers, // On injecte nos headers intelligents
+      headers: headers,
       signal: controller.signal,
     });
 
@@ -57,22 +46,56 @@ export async function secureFetch(url, options = {}) {
           text: "Veuillez vous reconnecter.",
           icon: "info",
         }).then(() => {
-          if (typeof window.handleLogout === "function") window.handleLogout(); // Appel sécurisé
+          if (typeof window.handleLogout === "function") window.handleLogout();
         });
         throw new Error("Session expirée.");
       }
 
-if (response.status === 403) {
-        // On affiche le message spécifique du serveur s'il existe (ex: erreur de zone GPS)
-        throw new Error(errorMessage || "Accès refusé. Vous n'avez pas les droits nécessaires.");
+      if (response.status === 403) {
+        throw new Error(errorMessage || "Accès refusé.");
       }
       throw new Error(errorMessage);
     }
     return response;
+    
   } catch (error) {
+    clearTimeout(timeoutId);
+    
     if (error.name === "AbortError") {
       throw new Error("Le serveur met trop de temps à répondre. Réessayez.");
     }
+    
+    // 🔥 NOUVEAU : Si hors-ligne, essayer le cache
+    if (!navigator.onLine || error.message.includes("Failed to fetch")) {
+      console.log("📡 Hors-ligne détecté, tentative de lecture depuis le cache...");
+      
+      // Essayer de lire depuis le cache du Service Worker
+      const cache = await caches.open("sirh-cache-v6");
+      const cachedResponse = await cache.match(url);
+      
+      if (cachedResponse) {
+        console.log("✅ Données servies depuis le cache pour:", url);
+        return cachedResponse;
+      }
+      
+      // Si pas de cache, essayer le localStorage
+      if (url.includes("/read-payroll-full")) {
+        const cachedData = localStorage.getItem('sirh_employees_cache');
+        if (cachedData) {
+          const parsed = JSON.parse(cachedData);
+          return new Response(JSON.stringify({
+            data: parsed.data,
+            meta: { total: parsed.data.length, page: 1, last_page: 1 }
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+      }
+      
+      throw new Error("Vous êtes hors ligne et aucune donnée n'est disponible en cache.");
+    }
+    
     throw error;
   }
 }
