@@ -194,22 +194,28 @@ export async function loadAccountingView(page = 1) {
 function renderPayrollPagination() {
   console.log("🔍 renderPayrollPagination appelée", currentPayrollMeta);
   
-  // Chercher un conteneur existant
   let paginationContainer = document.getElementById("payroll-pagination");
   
-  // Si le conteneur n'existe pas, on le crée au bon endroit
   if (!paginationContainer) {
-    // Chercher le conteneur du tableau
-    const tableContainer = document.querySelector("#view-accounting .overflow-x-auto");
-    const parentDiv = document.querySelector("#view-accounting .bg-white.rounded-xl");
+    // Cherche le conteneur du tableau (l'élément qui contient le tableau)
+    const tableWrapper = document.querySelector("#view-accounting .overflow-x-auto");
+    const parentDiv = tableWrapper ? tableWrapper.parentNode : document.querySelector("#view-accounting .bg-white.rounded-xl");
     
     if (parentDiv && !document.getElementById("payroll-pagination")) {
       const div = document.createElement("div");
       div.id = "payroll-pagination";
-      div.className = "px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center";
-      parentDiv.appendChild(div);
+      div.className = "px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center";
+      div.style.display = "flex";
+      div.style.marginTop = "20px";
+      div.style.marginBottom = "20px";
+      // Insère APRÈS le tableau, pas avant
+      if (tableWrapper) {
+        tableWrapper.insertAdjacentElement('afterend', div);
+      } else {
+        parentDiv.appendChild(div);
+      }
       paginationContainer = div;
-      console.log("✅ Conteneur pagination créé");
+      console.log("✅ Conteneur pagination créé après le tableau");
     }
   }
   
