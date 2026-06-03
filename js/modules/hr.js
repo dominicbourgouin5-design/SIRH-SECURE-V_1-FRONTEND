@@ -3133,3 +3133,32 @@ export function getCachedEmployeesMeta() {
     return null;
   }
 }
+
+
+// ============================================================
+// FONCTIONS UTILITAIRES MANQUANTES
+// ============================================================
+
+// Rafraîchir toutes les données
+export async function refreshAllData(force = false) {
+  console.log("🔄 Rafraîchissement des données...");
+  await fetchData(force, 1);
+  await loadMyProfile();
+  await window.fetchLeaveRequests();
+}
+
+// Voir un document dans un modal
+export function viewDocument(url, title) {
+  if (!url || url === "#" || url === "null") {
+    Swal.fire("Erreur", "Document non disponible", "warning");
+    return;
+  }
+  
+  Swal.fire({
+    title: title || "Document",
+    html: `<iframe src="${url}" style="width:100%; height:500px; border:none;"></iframe>`,
+    width: "900px",
+    showConfirmButton: true,
+    confirmButtonText: "Fermer"
+  });
+}
