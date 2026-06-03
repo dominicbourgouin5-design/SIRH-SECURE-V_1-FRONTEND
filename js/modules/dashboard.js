@@ -150,8 +150,19 @@ export async function renderCharts() {
   ) {
     return;
   }
-  // ----------------------------------------
 
+    // 🔥 Si hors-ligne, ne pas essayer de charger les graphiques
+  if (!navigator.onLine) {
+    console.log("📡 Hors-ligne: affichage des graphiques désactivé");
+    const chartStatus = document.getElementById("chartStatus");
+    const chartDept = document.getElementById("chartDept");
+    if (chartStatus && chartStatus.parentElement) {
+      chartStatus.parentElement.innerHTML = '<div class="text-center p-8 text-slate-400 italic">📡 Mode hors-ligne - Graphiques non disponibles</div>';
+    }
+    return;
+  }
+
+  
 // --- 1. BLOC D'INTELLIGENCE VISUELLE (DÉBUT) ---
 const isSuperBoss = AppState.currentUser.permissions?.can_see_employees === true;
 
