@@ -3,9 +3,15 @@ import { SIRH_CONFIG } from "../core/config.js";
 import { secureFetch } from "../core/api.js";
 import { CSVManager } from "../core/utils.js";
 
-export async function loadAccountingView() {
+// Variable globale pour stocker la pagination courante
+let currentPayrollPage = 1;
+let currentPayrollMeta = { total: 0, page: 1, last_page: 1 };
+
+export async function loadAccountingView(page = 1) {
   const body = document.getElementById("accounting-table-body");
   if (!body) return;
+
+  currentPayrollPage = page;
 
   const monthMap = {
     "Janvier": "01", "Février": "02", "Mars": "03", "Avril": "04",
@@ -29,57 +35,57 @@ export async function loadAccountingView() {
     agent: AppState.currentUser.nom,
   };
 
-  body.innerHTML = `<tr><td colspan="7" class="p-12 text-center"><i class="fa-solid fa-robot fa-bounce text-blue-600 text-3xl"></i><p class="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">Analyse segmentée : ${monthName} ${annee}...</p></td></tr>`;
+  // Afficher le loader avec la page en cours
+  body.innerHTML = `<tr><td colspan="7" class="p-12 text-center"><i class="fa-solid fa-spinner fa-spin text-blue-600 text-3xl"></i><p class="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">Chargement page ${page}...</p></td></tr>`;
 
   try {
+    // 🔥 REQUÊTE AVEC PAGINATION
+    const url = `${SIRH_CONFIG.apiBaseUrl}/read-payroll-full?page=${page}&limit=20&agent=${encodeURIComponent(filters.agent)}&type=${filters.type}&dept=${encodeURIComponent(filters.dept)}&status=${filters.status}&role=${encodeURIComponent(filters.role)}`;
+    
     const [resEmp, resRules, resAuto] = await Promise.all([
-      secureFetch(`${SIRH_CONFIG.apiBaseUrl}/read-payroll-full?agent=${encodeURIComponent(filters.agent)}&type=${filters.type}&dept=${encodeURIComponent(filters.dept)}&status=${filters.status}&role=${encodeURIComponent(filters.role)}`),
+      secureFetch(url),
       secureFetch(`${SIRH_CONFIG.apiBaseUrl}/list-payroll-rules`),
       secureFetch(`${SIRH_CONFIG.apiBaseUrl}/compute-automated-payroll?month=${moisChiffre}&year=${annee}`)
     ]);
 
-    const employeesToPay = await resEmp.json();
+    const result = await resEmp.json();
+    const employeesToPay = result.data || [];
+    const meta = result.meta || { total: 0, page: 1, last_page: 1 };
+    
+    // Sauvegarder les métadonnées pour la pagination
+    currentPayrollMeta = meta;
+    
     const dynamicRules = await resRules.json();
     const autoPerformanceData = await resAuto.json();
 
     body.innerHTML = "";
     if (employeesToPay.length === 0) {
-      body.innerHTML = '<tr><td colspan="7" class="p-20 text-center text-slate-300 italic">Aucun collaborateur trouvé.</td></tr>';
+      body.innerHTML = '<tr><td colspan="7" class="p-20 text-center text-slate-300 italic">Aucun collaborateur trouvé. </td></tr>';
+      renderPayrollPagination();
       return;
     }
 
+    // Afficher les employés
     employeesToPay.forEach((emp, index) => {
       const safeNom = emp.nom || "Inconnu";
       const safeMatricule = emp.matricule || "N/A";
       const initial = safeNom.charAt(0).toUpperCase();
       
-      // 1. PERFORMANCE RÉELLE DU MOIS (Calculée par le Backend / Robot)
       const perf = autoPerformanceData.find(a => String(a.employee_id) === String(emp.id)) || { computed_bonus: 0, explanation: "" };
-
-      // 2. INDEMNITÉS FIXES DE LA FICHE (Transport + Logement)
       let fixeRH = (parseFloat(emp.indemnite_transport) || 0) + (parseFloat(emp.indemnite_logement) || 0);
-
-      // 3. APPLICATION DES RÈGLES STATIQUES AVEC CIBLAGE (Rôle / Dept)
+      
       let primesReglesStatiques = 0;
       let staticDetails = [];
 
       if (Array.isArray(dynamicRules)) {
           dynamicRules.forEach(rule => {
-              // --- VÉRIFICATION DU CIBLAGE (TARGETING) ---
               let appliesToThisEmployee = false;
+              if (rule.target_type === 'GLOBAL') appliesToThisEmployee = true;
+              else if (rule.target_type === 'ROLE' && emp.role === rule.target_value) appliesToThisEmployee = true;
+              else if (rule.target_type === 'DEPARTMENT' && emp.departement === rule.target_value) appliesToThisEmployee = true;
 
-              if (rule.target_type === 'GLOBAL') {
-                  appliesToThisEmployee = true;
-              } else if (rule.target_type === 'ROLE' && emp.role === rule.target_value) {
-                  appliesToThisEmployee = true;
-              } else if (rule.target_type === 'DEPARTMENT' && emp.departement === rule.target_value) {
-                  appliesToThisEmployee = true;
-              }
-
-              // --- APPLICATION DE LA CONDITION SI LE CIBLAGE MATCH ---
               if (appliesToThisEmployee && rule.data_source === 'PROFILE') {
                   const valEmploye = emp[rule.condition_field];
-                  // Comparaison simple (==) pour les règles de profil
                   if (valEmploye == rule.condition_value) {
                       const amount = parseFloat(rule.action_value || 0);
                       primesReglesStatiques += amount;
@@ -90,11 +96,7 @@ export async function loadAccountingView() {
       }
       
       const totalAutomatique = Math.round(fixeRH + primesReglesStatiques + perf.computed_bonus);
-      const explanationComplete = [
-          fixeRH > 0 ? `Fixes (Fiche): ${fixeRH}` : "",
-          ...staticDetails,
-          perf.explanation
-      ].filter(t => t).join(" | ");
+      const explanationComplete = [fixeRH > 0 ? `Fixes (Fiche): ${fixeRH}` : "", ...staticDetails, perf.explanation].filter(t => t).join(" | ");
 
       body.innerHTML += `
         <tr class="hover:bg-blue-50/50 transition-all accounting-row animate-fadeIn" data-search="${safeNom.toLowerCase()}">
@@ -106,36 +108,30 @@ export async function loadAccountingView() {
                         <div class="text-[9px] text-slate-400 font-bold">${safeMatricule} • ${emp.poste || '---'}</div>
                     </div>
                 </div>
-            </td>
-            
+             </td>
             <td class="px-2 py-4 text-center">
                 <input type="number" oninput="window.calculateRow(${index})" id="base-${index}" 
                        class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-center font-black text-xs shadow-sm focus:ring-2 focus:ring-blue-500 outline-none transition-all" 
                        value="${emp.salaire_brut_fixe || 0}">
-            </td>
-
+             </td>
             <td class="px-2 py-4 text-center">
                 <div class="relative group bg-indigo-50/50 border border-indigo-100 rounded-xl py-2 shadow-sm cursor-help" 
                      title="${explanationComplete || 'Calcul automatique standard'}">
                     <span id="indem-constante-${index}" class="text-indigo-700 font-black text-xs">${totalAutomatique}</span>
                     <p class="text-[7px] text-indigo-400 font-bold uppercase tracking-tighter">Automatisé</p>
-                    
                     ${(perf.computed_bonus > 0 || staticDetails.length > 0) ? '<div class="absolute -top-1 -right-1 w-2.5 h-2.5 bg-blue-500 rounded-full border-2 border-white animate-pulse"></div>' : ''}
                 </div>
-            </td>
-            
+             </td>
             <td class="px-2 py-4 text-center">
                 <input type="number" oninput="window.calculateRow(${index})" id="prime-${index}" 
                        class="w-full p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-center font-black text-xs text-emerald-700 focus:ring-2 focus:ring-emerald-500 outline-none shadow-sm transition-all" 
                        placeholder="0">
-            </td>
-
+             </td>
             <td class="px-2 py-4 text-center">
                 <input type="number" oninput="window.calculateRow(${index})" id="acompte-${index}" 
                        class="w-full p-2.5 bg-orange-50 border border-orange-200 rounded-xl text-center font-black text-xs text-orange-700 focus:ring-2 focus:ring-orange-500 outline-none shadow-sm transition-all" 
                        placeholder="0">
-            </td>
-
+             </td>
             <td class="px-2 py-4 text-center">
                 <div class="relative flex items-center group">
                     <input type="number" oninput="window.calculateRow(${index})" id="tax-${index}" data-auto="true" readonly
@@ -144,8 +140,7 @@ export async function loadAccountingView() {
                         <i class="fa-solid fa-lock text-[10px]"></i>
                     </button>
                 </div>
-            </td>
-
+             </td>
             <td class="px-6 py-4 text-right">
                 <div class="text-sm font-black text-blue-600 bg-blue-50 px-3 py-2 rounded-xl inline-block shadow-sm border border-blue-100 sensitive-value" 
                      onclick="window.toggleSensitiveData(this)" 
@@ -154,11 +149,15 @@ export async function loadAccountingView() {
                      data-nom="${safeNom}" 
                      data-matricule="${safeMatricule}"
                      data-poste="${emp.poste}">0 CFA</div>
-            </td>
-        </tr>`;
+             </td>
+         </tr>`;
     });
 
+    // Recalculer chaque ligne
     employeesToPay.forEach((_, i) => window.calculateRow(i));
+    
+    // Afficher la pagination
+    renderPayrollPagination();
 
   } catch (e) {
     console.error("Erreur de rendu paie:", e);
@@ -166,6 +165,54 @@ export async function loadAccountingView() {
   }
 }
 
+/**
+ * Affiche la barre de pagination pour la paie
+ */
+function renderPayrollPagination() {
+  let paginationContainer = document.getElementById("payroll-pagination");
+  
+  // Créer le conteneur s'il n'existe pas
+  if (!paginationContainer) {
+    const tableContainer = document.querySelector("#view-accounting .bg-white.rounded-xl");
+    if (tableContainer && tableContainer.parentNode) {
+      const div = document.createElement("div");
+      div.id = "payroll-pagination";
+      div.className = "px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-between items-center";
+      tableContainer.parentNode.insertBefore(div, tableContainer.nextSibling);
+      paginationContainer = div;
+    }
+  }
+  
+  if (!paginationContainer) return;
+  
+  // Cacher la pagination si une seule page
+  if (currentPayrollMeta.last_page <= 1) {
+    paginationContainer.innerHTML = '';
+    paginationContainer.style.display = 'none';
+    return;
+  }
+  
+  paginationContainer.style.display = 'flex';
+  paginationContainer.innerHTML = `
+    <div class="flex justify-between items-center w-full">
+      <button onclick="window.loadAccountingView(${currentPayrollPage - 1})" 
+          ${currentPayrollPage <= 1 ? 'disabled' : ''}
+          class="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black uppercase text-slate-600 disabled:opacity-30 hover:bg-slate-50 transition-all">
+        <i class="fa-solid fa-chevron-left mr-2"></i> Précédent
+      </button>
+      
+      <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+        Page ${currentPayrollPage} / ${currentPayrollMeta.last_page}
+      </span>
+      
+      <button onclick="window.loadAccountingView(${currentPayrollPage + 1})" 
+          ${currentPayrollPage >= currentPayrollMeta.last_page ? 'disabled' : ''}
+          class="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black uppercase text-slate-600 disabled:opacity-30 hover:bg-slate-50 transition-all">
+        Suivant <i class="fa-solid fa-chevron-right ml-2"></i>
+      </button>
+    </div>
+  `;
+}
 
 export function resetAccountingFilters() {
   document.getElementById("search-accounting").value = "";
@@ -174,94 +221,93 @@ export function resetAccountingFilters() {
   document.getElementById("filter-accounting-dept").value = "all";
   if (document.getElementById("filter-accounting-role"))
     document.getElementById("filter-accounting-role").value = "all";
-  loadAccountingView();
+  loadAccountingView(1); // Revenir à la page 1
 }
 
 export function filterAccountingTableLocally() {
   const term = document.getElementById("search-accounting").value.toLowerCase();
   document.querySelectorAll(".accounting-row").forEach((row) => {
     const text = row.getAttribute("data-search");
-    row.style.display = text.includes(term) ? "" : "none";
+    row.style.display = text && text.includes(term) ? "" : "none";
   });
 }
 
 export function toggleTaxLock(index) {
     const inputTax = document.getElementById(`tax-${index}`);
     const lockBtn = document.getElementById(`tax-lock-${index}`);
-    const label = document.getElementById(`tax-label-${index}`);
+    let label = document.getElementById(`tax-label-${index}`);
+    
+    // Créer le label s'il n'existe pas
+    if (!label && inputTax && inputTax.parentElement) {
+      label = document.createElement('span');
+      label.id = `tax-label-${index}`;
+      label.className = "text-[8px] text-slate-400 mt-1 block";
+      inputTax.parentElement.appendChild(label);
+    }
 
     const isAuto = inputTax.dataset.auto === "true";
 
     if (isAuto) {
-        // On DÉVERROUILLE (Passe en manuel)
         inputTax.dataset.auto = "false";
         inputTax.readOnly = false;
         inputTax.classList.replace("bg-slate-100", "bg-white");
         inputTax.classList.replace("shadow-inner", "shadow-sm");
         inputTax.classList.add("focus:ring-2", "focus:ring-red-500");
         lockBtn.innerHTML = '<i class="fa-solid fa-unlock text-[10px] text-red-500"></i>';
-        label.innerText = "Saisie Manuelle";
-        label.classList.replace("text-slate-400", "text-red-400");
+        if (label) {
+          label.innerText = "Saisie Manuelle";
+          label.classList.replace("text-slate-400", "text-red-400");
+        }
     } else {
-        // On VERROUILLE (Repasse en auto)
         inputTax.dataset.auto = "true";
         inputTax.readOnly = true;
         inputTax.classList.replace("bg-white", "bg-slate-100");
         inputTax.classList.replace("shadow-sm", "shadow-inner");
         inputTax.classList.remove("focus:ring-2", "focus:ring-red-500");
         lockBtn.innerHTML = '<i class="fa-solid fa-lock text-[10px]"></i>';
-        label.innerText = "Calcul Auto";
-        label.classList.replace("text-red-400", "text-slate-400");
-        
-        // On force un recalcul immédiat avec les taux officiels
+        if (label) {
+          label.innerText = "Calcul Auto";
+          label.classList.replace("text-red-400", "text-slate-400");
+        }
         calculateRow(index);
     }
 }
 
 export function calculateRow(index) {
-    const base = parseInt(document.getElementById(`base-${index}`).value) || 0;
-    const indemnitesFixes = parseInt(document.getElementById(`indem-constante-${index}`).innerText) || 0;
-    const primeVariable = parseInt(document.getElementById(`prime-${index}`).value) || 0;
-    const acompte = parseInt(document.getElementById(`acompte-${index}`).value) || 0;
+    const base = parseInt(document.getElementById(`base-${index}`)?.value) || 0;
+    const indemnitesFixes = parseInt(document.getElementById(`indem-constante-${index}`)?.innerText) || 0;
+    const primeVariable = parseInt(document.getElementById(`prime-${index}`)?.value) || 0;
+    const acompte = parseInt(document.getElementById(`acompte-${index}`)?.value) || 0;
     
     const inputTax = document.getElementById(`tax-${index}`);
 
-    // Si le cadenas est fermé (AUTO), le système calcule les taxes lui-même
     if (inputTax && inputTax.dataset.auto === "true") {
         const rateCNSS = AppState.payrollConstants["CNSS_EMPLOYEE_RATE"] || 0;
         const rateIRPP = AppState.payrollConstants["IRPP_BASE_RATE"] || 0;
         const totalTaxRate = rateCNSS + rateIRPP;
-        
-        // La taxe s'applique généralement sur la Base + Primes
         const assietteFiscale = base + primeVariable;
         inputTax.value = Math.round(assietteFiscale * (totalTaxRate / 100));
     }
 
-    const retenues = parseInt(inputTax.value) || 0;
-
-    // LE CALCUL FINAL
+    const retenues = parseInt(inputTax?.value) || 0;
     const net = base + indemnitesFixes + primeVariable - acompte - retenues;
 
-    // Mise à jour de l'affichage
     const display = document.getElementById(`net-${index}`);
-    display.innerText = new Intl.NumberFormat("fr-FR").format(net) + " CFA";
-
-    // Stockage dans le HTML pour la génération des PDF
-    display.dataset.net = net;
-    display.dataset.base = base;
-    display.dataset.prime = primeVariable;
-    display.dataset.acompte = acompte;
-    display.dataset.tax = retenues;
+    if (display) {
+      display.innerText = new Intl.NumberFormat("fr-FR").format(net) + " CFA";
+      display.dataset.net = net;
+      display.dataset.base = base;
+      display.dataset.prime = primeVariable;
+      display.dataset.acompte = acompte;
+      display.dataset.tax = retenues;
+    }
 }
 
 export async function fetchPayrollConstants() {
   try {
-    const r = await secureFetch(
-      `${SIRH_CONFIG.apiBaseUrl}/read-config-salaries`,
-    ); // On va créer cette route
+    const r = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/read-config-salaries`);
     const data = await r.json();
 
-    // On transforme le tableau en objet facile à lire : { "CNSS_EMPLOYEE_RATE": 3.6, ... }
     data.forEach((item) => {
       AppState.payrollConstants[item.key_code] = item.value_number;
     });
@@ -272,29 +318,26 @@ export async function fetchPayrollConstants() {
     if (inputIrpp) inputIrpp.value = AppState.payrollConstants["IRPP_BASE_RATE"] || 0;
     
     console.log("📊 Constantes de paie chargées :", AppState.payrollConstants); 
-      } catch (e) {
-        console.error("Erreur constantes paie", e);
-      }
-    }
-
-
+  } catch (e) {
+    console.error("Erreur constantes paie", e);
+  }
+}
 
 export async function generateAllPay() {
     const mois = document.getElementById("pay-month").value;
     const annee = document.getElementById("pay-year").value;
-    const records =[];
+    const records = [];
 
-    // 1. Récupération des données depuis le tableau
     document.querySelectorAll('[id^="net-"]').forEach((el) => {
         const index = el.id.split("-")[1];
         const netValue = parseInt(el.dataset.net) || 0;
 
         if (netValue > 0) {
-            const baseVal = parseInt(document.getElementById(`base-${index}`).value) || 0;
-            const indemVal = parseInt(document.getElementById(`indem-constante-${index}`).innerText) || 0;
-            const primeVal = parseInt(document.getElementById(`prime-${index}`).value) || 0;
-            const acompteVal = parseInt(document.getElementById(`acompte-${index}`).value) || 0; // Ajout Acompte
-            const taxVal = parseInt(document.getElementById(`tax-${index}`).value) || 0;
+            const baseVal = parseInt(document.getElementById(`base-${index}`)?.value) || 0;
+            const indemVal = parseInt(document.getElementById(`indem-constante-${index}`)?.innerText) || 0;
+            const primeVal = parseInt(document.getElementById(`prime-${index}`)?.value) || 0;
+            const acompteVal = parseInt(document.getElementById(`acompte-${index}`)?.value) || 0;
+            const taxVal = parseInt(document.getElementById(`tax-${index}`)?.value) || 0;
 
             records.push({
                 id: el.dataset.id,
@@ -306,7 +349,7 @@ export async function generateAllPay() {
                 salaire_base: baseVal,
                 indemnites_fixes: indemVal, 
                 primes: primeVal,
-                acomptes: acompteVal, // Ajout Acompte
+                acomptes: acompteVal,
                 retenues: taxVal,
                 salaire_net: netValue,
                 taux_cnss: AppState.payrollConstants["CNSS_EMPLOYEE_RATE"] || 0,
@@ -317,14 +360,12 @@ export async function generateAllPay() {
 
     if (records.length === 0) return Swal.fire("Oups", "Saisissez au moins un salaire positif.", "warning");
 
-    // --- 2. LOGIQUE BATCH (Découpage en lots de 3) ---
     const chunkSize = 3; 
-    const chunks =[];
+    const chunks = [];
     for (let i = 0; i < records.length; i += chunkSize) {
         chunks.push(records.slice(i, i + chunkSize));
     }
 
-    // 3. Affichage de la progression
     let processedCount = 0;
     Swal.fire({
         title: "Génération en cours...",
@@ -339,7 +380,6 @@ export async function generateAllPay() {
     });
 
     try {
-        // 4. Envoi des lots un par un (On attend que le lot 1 finisse avant d'envoyer le lot 2)
         for (const chunk of chunks) {
             const response = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/process-payroll`, {
                 method: "POST",
@@ -355,7 +395,6 @@ export async function generateAllPay() {
                 throw new Error(errData.error || "Erreur lors de la génération");
             }
 
-            // Mise à jour de la progression visuelle
             processedCount += chunk.length;
             const progressText = document.getElementById("payroll-progress-text");
             if (progressText) {
@@ -363,14 +402,7 @@ export async function generateAllPay() {
             }
         }
 
-        // 5. Succès Total
-        Swal.fire(
-            "Terminé !",
-            "Tous les bulletins ont été générés et distribués dans les espaces personnels.",
-            "success"
-        );
-        
-        // Optionnel : On peut retourner au Dashboard
+        Swal.fire("Terminé !", "Tous les bulletins ont été générés et distribués dans les espaces personnels.", "success");
         setTimeout(() => window.switchView("dash"), 1500);
 
     } catch (e) {
@@ -379,24 +411,13 @@ export async function generateAllPay() {
     }
 }
 
-
-
-
-// ============================================================
-// EXPORT EXCEL (MODÈLE DE SAISIE)
-// ============================================================
 export function exportPayrollTemplate() {
   const rows = document.querySelectorAll(".accounting-row");
 
   if (rows.length === 0) {
-    return Swal.fire(
-      "Oups",
-      "Aucun collaborateur affiché dans le tableau à exporter.",
-      "warning",
-    );
+    return Swal.fire("Oups", "Aucun collaborateur affiché dans le tableau à exporter.", "warning");
   }
 
-  // 1. NOUVEAU : Ajout de la colonne ACOMPTES dans l'en-tête
   let csvContent = "\ufeffMATRICULE;NOM;POSTE;SALAIRE_BASE;INDEMNITES_FIXES;TOTAL_PRIMES;ACOMPTES;TOTAL_RETENUES\n";
 
   rows.forEach((row) => {
@@ -408,15 +429,13 @@ export function exportPayrollTemplate() {
     const nom = netDisplay.dataset.nom || "";
     const poste = netDisplay.dataset.poste || "";
 
-    // 2. NOUVEAU : On récupère aussi la valeur de l'Acompte
-    const baseCurrent = document.getElementById(`base-${index}`).value || 0;
-    const indemCurrent = document.getElementById(`indem-constante-${index}`).innerText || 0;
-    const primeCurrent = document.getElementById(`prime-${index}`).value || 0;
-    const acompteCurrent = document.getElementById(`acompte-${index}`).value || 0; // <-- ICIII
-    const taxCurrent = document.getElementById(`tax-${index}`).value || 0; 
+    const baseCurrent = document.getElementById(`base-${index}`)?.value || 0;
+    const indemCurrent = document.getElementById(`indem-constante-${index}`)?.innerText || 0;
+    const primeCurrent = document.getElementById(`prime-${index}`)?.value || 0;
+    const acompteCurrent = document.getElementById(`acompte-${index}`)?.value || 0;
+    const taxCurrent = document.getElementById(`tax-${index}`)?.value || 0; 
 
-    // 3. NOUVEAU : On insère l'acompte dans la ligne CSV
-    csvContent += `\t${matricule};${nom};${poste};${baseCurrent};${indemCurrent};${primeCurrent};${acompteCurrent};${taxCurrent}\n`;
+    csvContent += `${matricule};${nom};${poste};${baseCurrent};${indemCurrent};${primeCurrent};${acompteCurrent};${taxCurrent}\n`;
   });
 
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
@@ -426,10 +445,6 @@ export function exportPayrollTemplate() {
   link.click();
 }
 
-
-// ============================================================
-// IMPORT EXCEL (LECTURE ET MISE À JOUR)
-// ============================================================
 export async function handlePayrollImport(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -458,7 +473,7 @@ export async function handlePayrollImport(event) {
         const inputBase = document.getElementById(`base-${index}`);
         const displayIndem = document.getElementById(`indem-constante-${index}`);
         const inputPrime = document.getElementById(`prime-${index}`);
-        const inputAcompte = document.getElementById(`acompte-${index}`); // <-- NOUVEAU
+        const inputAcompte = document.getElementById(`acompte-${index}`);
         const inputTax = document.getElementById(`tax-${index}`);
 
         let hasChanged = false;
@@ -478,7 +493,6 @@ export async function handlePayrollImport(event) {
           hasChanged = true;
         }
 
-        // 💥 NOUVEAU : Traitement de la colonne ACOMPTES
         if (row["acomptes"] !== undefined && inputAcompte) {
           inputAcompte.value = parseInt(row["acomptes"]) || 0;
           hasChanged = true;
@@ -491,7 +505,7 @@ export async function handlePayrollImport(event) {
         }
 
         if (hasChanged) {
-          window.calculateRow(index); // Met à jour le net à payer
+          window.calculateRow(index);
           updateCount++;
         }
       }
@@ -509,17 +523,9 @@ export async function handlePayrollImport(event) {
   }
 }
 
-
-
-
-
-
-
 export function triggerPayrollImport() {
   document.getElementById("payroll-csv-file").click();
 }
-
-
 
 export async function fetchPayrollData() {
   const container = document.getElementById("payroll-container");
@@ -527,29 +533,23 @@ export async function fetchPayrollData() {
   if (!container || !AppState.currentUser) return;
 
   try {
-    const r = await secureFetch(
-      `${SIRH_CONFIG.apiBaseUrl}/read-payroll?employee_id=${encodeURIComponent(AppState.currentUser.id)}&agent=${encodeURIComponent(AppState.currentUser.nom)}`,
-    );
+    const r = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/read-payroll?employee_id=${encodeURIComponent(AppState.currentUser.id)}&agent=${encodeURIComponent(AppState.currentUser.nom)}`);
     const payrolls = await r.json();
 
     container.innerHTML = "";
     if (countLabel) countLabel.innerText = payrolls.length || 0;
 
     if (!payrolls || payrolls.length === 0) {
-      container.innerHTML =
-        '<p class="col-span-full text-[10px] text-slate-400 italic text-center py-10">Aucun bulletin disponible</p>';
+      container.innerHTML = '<p class="col-span-full text-[10px] text-slate-400 italic text-center py-10">Aucun bulletin disponible</p>';
       return;
     }
 
-
-payrolls.forEach((p) => {
+    payrolls.forEach((p) => {
       const nomEmp = p.employees ? p.employees.nom : AppState.currentUser.nom;
-      const posteEmp = p.employees ? p.employees.poste : "--";
       const montant = p.salaire_net ? new Intl.NumberFormat("fr-FR").format(p.salaire_net) + " FCFA" : "--";
       const titre = `${p.mois} ${p.annee}`;
       const fileUrl = p.fiche_pdf_url; 
       
-      // --- NOUVEAU : LOGIQUE DU BADGE DE CONSULTATION ---
       let statusBadge = `<span class="bg-orange-50 text-orange-600 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-widest border border-orange-100"><i class="fa-regular fa-eye-slash mr-1"></i> Non consulté</span>`;
       
       if (p.date_consultation) {
@@ -563,7 +563,6 @@ payrolls.forEach((p) => {
                 <div class="bg-white border border-slate-100 text-emerald-600 p-2.5 rounded-xl shadow-sm">
                     <i class="fa-solid fa-file-invoice text-xl"></i>
                 </div>
-                <!-- ON UTILISE MAINTENANT window.viewPayroll AU LIEU DE viewDocument -->
                 <button onclick="window.viewPayroll('${p.id}', '${fileUrl}', 'Bulletin ${titre}')" class="text-slate-300 hover:text-blue-600 transition-colors p-2 bg-white rounded-lg shadow-sm border border-slate-100 group-hover:bg-blue-50 group-hover:border-blue-200">
                     <i class="fa-solid fa-eye"></i> Ouvrir
                 </button>
@@ -571,9 +570,8 @@ payrolls.forEach((p) => {
             <div>
                 <p class="text-[10px] font-black text-slate-400 uppercase mb-1">${nomEmp}</p>
                 <p class="text-xs font-bold text-slate-700 mb-2">Bulletin de ${titre}</p>
-                
                 <div class="flex items-center justify-between mt-3 pt-3 border-t border-slate-200/60">
-                    <p class="text-[10px] text-emerald-600 font-black uppercase tracking-wide sensitive-value" onclick="toggleSensitiveData(this)" title="Cliquez pour afficher">
+                    <p class="text-[10px] text-emerald-600 font-black uppercase tracking-wide sensitive-value" onclick="window.toggleSensitiveData(this)" title="Cliquez pour afficher">
                         ${montant}
                     </p>
                     ${statusBadge}
@@ -582,16 +580,12 @@ payrolls.forEach((p) => {
         </div>
       `;
     });
-    
   } catch (e) {
     console.warn("Erreur bulletins:", e);
-    container.innerHTML =
-      '<p class="col-span-full text-[10px] text-red-400 italic text-center py-4">Erreur de chargement</p>';
+    container.innerHTML = '<p class="col-span-full text-[10px] text-red-400 italic text-center py-4">Erreur de chargement</p>';
   }
 }
 
-
-// --- SAUVEGARDER LES TAUX DE PAIE ---
 export async function savePayrollConfig(e) {
     e.preventDefault();
     const cnss = document.getElementById("config-cnss").value;
@@ -608,7 +602,7 @@ export async function savePayrollConfig(e) {
 
         if (response.ok) {
             Swal.fire("Succès", "Les taux ont été mis à jour. Ils s'appliqueront à la prochaine paie.", "success");
-            await fetchPayrollConstants(); // On recharge les constantes en mémoire
+            await fetchPayrollConstants();
         } else {
             throw new Error("Erreur serveur.");
         }
@@ -617,11 +611,7 @@ export async function savePayrollConfig(e) {
     }
 }
 
-
-
-
 export async function simulateMoMoPayment() {
-    // 1. Calculer le montant total net à payer depuis le tableau actuel
     let totalNet = 0;
     let count = 0;
     document.querySelectorAll('[id^="net-"]').forEach(el => {
@@ -638,7 +628,6 @@ export async function simulateMoMoPayment() {
 
     const fmtTotal = new Intl.NumberFormat('fr-FR').format(totalNet);
 
-    // 2. Ouvrir la modale de confirmation (Design MTN)
     const { value: confirmMoMo } = await Swal.fire({
         title: '<span style="color:#004f71">Décaisser via MTN MoMo</span>',
         html: `
@@ -665,14 +654,12 @@ export async function simulateMoMoPayment() {
     });
 
     if (confirmMoMo) {
-        // 3. Animation de connexion aux API de MTN
         Swal.fire({
             title: 'Connexion MTN Gateway...',
             html: '<p class="text-sm">Vérification du solde et sécurisation du tunnel (Sandbox API)...</p>',
             allowOutsideClick: false,
             didOpen: () => {
                 Swal.showLoading();
-                // Simulation d'attente API (3 secondes)
                 setTimeout(() => {
                     Swal.fire({
                         icon: 'success',
@@ -694,33 +681,24 @@ export async function simulateMoMoPayment() {
 }
 
 export async function viewPayroll(payrollId, fileUrl, title) {
-    // 1. On ouvre le document immédiatement pour ne pas faire attendre l'utilisateur
     window.viewDocument(fileUrl, title);
 
-    // 2. On envoie un signal silencieux au serveur pour dire "Il l'a lu !"
     try {
         await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/mark-payroll-read`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id: payrollId })
         });
-        
-        // On rafraîchit la liste en arrière-plan pour que le badge passe au vert (Vu) à la fermeture du PDF
         setTimeout(() => fetchPayrollData(), 2000);
-        
     } catch (e) {
         console.error("Erreur logging paie:", e);
     }
 }
 
-
-
-
 export async function saveRule() {
-    // 1. Récupération des valeurs du formulaire HTML
-    const field = document.getElementById('r-field').value;
-    const operator = document.getElementById('r-op').value;
-    const val = document.getElementById('r-val').value;
+    const field = document.getElementById('r-field')?.value;
+    const operator = document.getElementById('r-op')?.value;
+    const val = document.getElementById('r-val')?.value;
     const actionValue = prompt("Quel est le montant de la prime/déduction en CFA ? (ex: 15000)");
 
     if (!val || !actionValue) return Swal.fire("Erreur", "Tous les champs sont requis", "warning");
@@ -728,7 +706,6 @@ export async function saveRule() {
     Swal.fire({ title: 'Enregistrement...', didOpen: () => Swal.showLoading() });
 
     try {
-        // 2. Envoi au serveur
         const response = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/save-payroll-rule`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -737,14 +714,13 @@ export async function saveRule() {
                 condition_field: field,
                 condition_operator: operator,
                 condition_value: val,
-                action_type: 'ADD_FIXED', // On simplifie : Ajout fixe par défaut
+                action_type: 'ADD_FIXED',
                 action_value: actionValue
             })
         });
 
         if (response.ok) {
             Swal.fire("Succès", "La règle a été ajoutée. Elle s'appliquera automatiquement au prochain calcul de paie.", "success");
-            // Optionnel : Recharger la liste des règles ici
         } else {
             throw new Error("Erreur serveur");
         }
