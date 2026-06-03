@@ -39,7 +39,7 @@ export async function loadAccountingView(page = 1) {
   body.innerHTML = `<tr><td colspan="7" class="p-12 text-center"><i class="fa-solid fa-spinner fa-spin text-blue-600 text-3xl"></i><p class="text-[10px] font-black text-slate-400 uppercase mt-4 tracking-widest">Chargement page ${page}...</p></td></tr>`;
 
   try {
-    // 🔥 REQUÊTE AVEC PAGINATION
+    // REQUÊTE AVEC PAGINATION - limit=1 pour tester l'affichage
     const url = `${SIRH_CONFIG.apiBaseUrl}/read-payroll-full?page=${page}&limit=1&agent=${encodeURIComponent(filters.agent)}&type=${filters.type}&dept=${encodeURIComponent(filters.dept)}&status=${filters.status}&role=${encodeURIComponent(filters.role)}`;
     
     const [resEmp, resRules, resAuto] = await Promise.all([
@@ -50,24 +50,21 @@ export async function loadAccountingView(page = 1) {
 
     const result = await resEmp.json();
     
-    // 🔥 DÉTECTION DU FORMAT DE RÉPONSE
+    // DÉTECTION DU FORMAT DE RÉPONSE
     let employeesToPay = [];
     let meta = { total: 0, page: 1, last_page: 1 };
     
     if (Array.isArray(result)) {
-        // Cas 1 : Le backend renvoie directement un tableau
         employeesToPay = result;
         meta = { 
             total: result.length, 
             page: currentPayrollPage, 
-            last_page: 1 
+            last_page: Math.ceil(result.length / 1)
         };
     } else if (result.data && Array.isArray(result.data)) {
-        // Cas 2 : Le backend renvoie { data: [], meta: {} }
         employeesToPay = result.data;
-        meta = result.meta || { total: employeesToPay.length, page: 1, last_page: 1 };
+        meta = result.meta || { total: employeesToPay.length, page: page, last_page: Math.ceil(employeesToPay.length / 1) };
     } else {
-        // Cas 3 : Format inattendu
         console.error("Format de réponse inattendu:", result);
         employeesToPay = [];
     }
@@ -173,7 +170,7 @@ export async function loadAccountingView(page = 1) {
                      data-matricule="${safeMatricule}"
                      data-poste="${emp.poste}">0 CFA</div>
              </td>
-         </tr>`;
+         </table>`;
     });
 
     // Recalculer chaque ligne
@@ -194,40 +191,45 @@ export async function loadAccountingView(page = 1) {
 function renderPayrollPagination() {
   console.log("🔍 renderPayrollPagination appelée", currentPayrollMeta);
   
-  let paginationContainer = document.getElementById("payroll-pagination");
-  
-  if (!paginationContainer) {
-    // Cherche le conteneur du tableau (l'élément qui contient le tableau)
-    const tableWrapper = document.querySelector("#view-accounting .overflow-x-auto");
-    const parentDiv = tableWrapper ? tableWrapper.parentNode : document.querySelector("#view-accounting .bg-white.rounded-xl");
-    
-    if (parentDiv && !document.getElementById("payroll-pagination")) {
-      const div = document.createElement("div");
-      div.id = "payroll-pagination";
-      div.className = "px-6 py-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center";
-      div.style.display = "flex";
-      div.style.marginTop = "20px";
-      div.style.marginBottom = "20px";
-      // Insère APRÈS le tableau, pas avant
-      if (tableWrapper) {
-        tableWrapper.insertAdjacentElement('afterend', div);
-      } else {
-        parentDiv.appendChild(div);
-      }
-      paginationContainer = div;
-      console.log("✅ Conteneur pagination créé après le tableau");
-    }
+  // Supprimer l'ancien conteneur s'il existe pour le recréer proprement
+  const oldContainer = document.getElementById("payroll-pagination");
+  if (oldContainer) {
+    oldContainer.remove();
   }
   
-  // Si toujours pas de conteneur, on sort
-  if (!paginationContainer) {
-    console.warn("⚠️ Impossible de trouver ou créer le conteneur de pagination");
+  // Chercher l'endroit où insérer la pagination
+  const tableWrapper = document.querySelector("#view-accounting .overflow-x-auto");
+  const parentContainer = document.querySelector("#view-accounting .bg-white.rounded-xl");
+  
+  if (!parentContainer) {
+    console.warn("⚠️ Conteneur parent non trouvé");
     return;
+  }
+  
+  // Créer le nouveau conteneur
+  const paginationContainer = document.createElement("div");
+  paginationContainer.id = "payroll-pagination";
+  paginationContainer.style.cssText = `
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 24px;
+    margin-top: 20px;
+    margin-bottom: 20px;
+    background-color: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+    border-radius: 12px;
+  `;
+  
+  // Insérer après le tableau
+  if (tableWrapper) {
+    tableWrapper.insertAdjacentElement('afterend', paginationContainer);
+  } else {
+    parentContainer.appendChild(paginationContainer);
   }
   
   // Cacher la pagination si une seule page
   if (currentPayrollMeta.last_page <= 1) {
-    paginationContainer.innerHTML = '';
     paginationContainer.style.display = 'none';
     console.log("📄 Une seule page, pagination cachée");
     return;
@@ -235,28 +237,30 @@ function renderPayrollPagination() {
   
   // Afficher la pagination
   paginationContainer.style.display = 'flex';
+  
+  const prevDisabled = currentPayrollPage <= 1;
+  const nextDisabled = currentPayrollPage >= currentPayrollMeta.last_page;
+  
   paginationContainer.innerHTML = `
-    <div class="flex justify-between items-center w-full">
-      <button onclick="window.loadAccountingView(${currentPayrollPage - 1})" 
-          ${currentPayrollPage <= 1 ? 'disabled' : ''}
-          class="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black uppercase text-slate-600 disabled:opacity-30 hover:bg-slate-50 transition-all">
-        <i class="fa-solid fa-chevron-left mr-2"></i> Précédent
-      </button>
-      
-      <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-        Page ${currentPayrollPage} / ${currentPayrollMeta.last_page}
-      </span>
-      
-      <button onclick="window.loadAccountingView(${currentPayrollPage + 1})" 
-          ${currentPayrollPage >= currentPayrollMeta.last_page ? 'disabled' : ''}
-          class="px-4 py-2 bg-white border border-slate-200 rounded-xl text-xs font-black uppercase text-slate-600 disabled:opacity-30 hover:bg-slate-50 transition-all">
-        Suivant <i class="fa-solid fa-chevron-right ml-2"></i>
-      </button>
-    </div>
+    <button onclick="window.loadAccountingView(${currentPayrollPage - 1})" 
+        ${prevDisabled ? 'disabled' : ''}
+        style="padding: 8px 16px; background: white; border: 1px solid #cbd5e1; border-radius: 12px; font-size: 12px; font-weight: bold; cursor: ${prevDisabled ? 'not-allowed' : 'pointer'}; color: ${prevDisabled ? '#94a3b8' : '#1e293b'};">
+      ← Précédent
+    </button>
+    
+    <span style="font-size: 13px; font-weight: bold; color: #1e293b;">
+      Page ${currentPayrollPage} / ${currentPayrollMeta.last_page}
+    </span>
+    
+    <button onclick="window.loadAccountingView(${currentPayrollPage + 1})" 
+        ${nextDisabled ? 'disabled' : ''}
+        style="padding: 8px 16px; background: white; border: 1px solid #cbd5e1; border-radius: 12px; font-size: 12px; font-weight: bold; cursor: ${nextDisabled ? 'not-allowed' : 'pointer'}; color: ${nextDisabled ? '#94a3b8' : '#1e293b'};">
+      Suivant →
+    </button>
   `;
-  console.log("📄 Pagination affichée");
+  
+  console.log("📄 Pagination affichée - Page", currentPayrollPage, "/", currentPayrollMeta.last_page);
 }
-
 
 export function resetAccountingFilters() {
   document.getElementById("search-accounting").value = "";
@@ -265,7 +269,7 @@ export function resetAccountingFilters() {
   document.getElementById("filter-accounting-dept").value = "all";
   if (document.getElementById("filter-accounting-role"))
     document.getElementById("filter-accounting-role").value = "all";
-  loadAccountingView(1); // Revenir à la page 1
+  loadAccountingView(1);
 }
 
 export function filterAccountingTableLocally() {
@@ -281,7 +285,6 @@ export function toggleTaxLock(index) {
     const lockBtn = document.getElementById(`tax-lock-${index}`);
     let label = document.getElementById(`tax-label-${index}`);
     
-    // Créer le label s'il n'existe pas
     if (!label && inputTax && inputTax.parentElement) {
       label = document.createElement('span');
       label.id = `tax-label-${index}`;
