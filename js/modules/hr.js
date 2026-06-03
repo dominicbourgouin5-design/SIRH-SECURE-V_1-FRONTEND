@@ -26,37 +26,23 @@ import {
 } from "../core/utils.js";
 
 export async function fetchData(forceUpdate = false, page = 1) {
-  console.log(
-    `🚀 fetchData lancée. Page: ${page}, Role: ${AppState.currentUser.role}`,
-  );
+  console.log(`🚀 fetchData lancée. Page: ${page}, Role: ${AppState.currentUser.role}`);
 
   const CACHE_KEY = "sirh_data_v1";
   const limit = 10;
 
   if (forceUpdate) {
-    localStorage.removeItem("sirh_data_v1"); // On vide le vieux cache
+    localStorage.removeItem(CACHE_KEY);
   }
-  // --- NOUVEAU : Récupération centralisée des filtres ---
-  // On utilise l'objet AppState.activeFilters (ou des valeurs par défaut si pas encore défini)
-  const filters =
-    typeof AppState.activeFilters !== "undefined"
-      ? AppState.activeFilters
-      : {
-          search:
-            typeof AppState.activeFilters.search !== "undefined"
-              ? AppState.activeFilters.search
-              : "",
-          status:
-            typeof AppState.currentStatusFilter !== "undefined"
-              ? AppState.currentStatusFilter
-              : "all",
-          type: "all",
-          dept: "all",
-        };
 
-  // 1. Construction de l'URL avec TOUS les paramètres de filtrage pro
-  let fetchUrl =
-    `${URL_READ}?page=${page}&limit=${limit}` +
+  const filters = typeof AppState.activeFilters !== "undefined" ? AppState.activeFilters : {
+    search: "",
+    status: "all",
+    type: "all",
+    dept: "all",
+  };
+
+  let fetchUrl = `${URL_READ}?page=${page}&limit=${limit}` +
     `&search=${encodeURIComponent(filters.search)}` +
     `&status=${filters.status}` +
     `&type=${filters.type}` +
@@ -69,7 +55,7 @@ export async function fetchData(forceUpdate = false, page = 1) {
   }
 
   try {
-    console.log("📞 Appel API (Deep Search Multi-Critères) vers :", fetchUrl);
+    console.log("📞 Appel API vers :", fetchUrl);
 
     const r = await secureFetch(fetchUrl);
     const result = await r.json();
@@ -77,13 +63,9 @@ export async function fetchData(forceUpdate = false, page = 1) {
     const d = result.data || [];
     const meta = result.meta || { total: d.length, page: 1, last_page: 1 };
 
-    console.log(
-      `✅ Page ${meta.page} reçue :`,
-      d.length,
-      "enregistrements trouvés",
-    );
+    console.log(`✅ Page ${meta.page} reçue :`, d.length, "enregistrements trouvés");
 
-    // 3. MAPPING (CORRIGÉ POUR INCLURE TRANSPORT ET LOGEMENT)
+    // Mapping des données (garde ton code existant)
     AppState.employees = d.map((x) => {
       return {
         id: x.id,
@@ -93,12 +75,7 @@ export async function fetchData(forceUpdate = false, page = 1) {
         poste: x.poste,
         dept: x.departement || "Non défini",
         Solde_Conges: parseFloat(x.solde_conges) || 0,
-        limit:
-          x.type_contrat === "CDI"
-            ? "365"
-            : x.type_contrat === "CDD"
-              ? "180"
-              : "90",
+        limit: x.type_contrat === "CDI" ? "365" : x.type_contrat === "CDD" ? "180" : "90",
         photo: x.photo_url || "",
         statut: x.statut || "Actif",
         email: x.email,
@@ -115,72 +92,85 @@ export async function fetchData(forceUpdate = false, page = 1) {
         diploma_link: x.diploma_url || "",
         attestation_link: x.attestation_url || "",
         lm_link: x.lm_url || "",
-        // --- LES CHAMPS FINANCIERS ---
         salaire_base_fixe: parseFloat(x.salaire_brut_fixe) || 0,
-        indemnite_transport: parseFloat(x.indemnite_transport) || 0, // AJOUTÉ
-        indemnite_logement: parseFloat(x.indemnite_logement) || 0, // AJOUTÉ
-        // -----------------------------
+        indemnite_transport: parseFloat(x.indemnite_transport) || 0,
+        indemnite_logement: parseFloat(x.indemnite_logement) || 0,
         contract_status: x.contract_status || "Non signé",
       };
     });
 
-    // 4. Sauvegarde Cache
+    // 🔥 SAUVEGARDE EN CACHE LOCAL
+    cacheEmployeesLocally(AppState.employees);
+    cacheEmployeesMeta(meta);
+
+    // Sauvegarde du cache Supabase (ancien système)
     localStorage.setItem(CACHE_KEY, JSON.stringify(AppState.employees));
     localStorage.setItem(CACHE_KEY + "_time", Date.now());
 
-    // 5. Mise à jour du Tableau
+    // Mise à jour du tableau
     renderData();
 
-    // --- MISE À JOUR DE LA NAVIGATION (PAGINATION FOOTER) ---
-    const paginationFooter = document.getElementById(
-      "employee-pagination-footer",
-    );
-
+    // Mise à jour de la pagination footer
+    const paginationFooter = document.getElementById("employee-pagination-footer");
     if (paginationFooter) {
       if (meta.last_page > 1) {
         paginationFooter.innerHTML = `
-                    <button onclick="window.fetchData(true, ${meta.page - 1})" ${meta.page <= 1 ? "disabled" : ""} 
-                        class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase text-slate-600 disabled:opacity-30 hover:bg-slate-100 transition-all shadow-sm">
-                        <i class="fa-solid fa-chevron-left"></i> Précédent
-                    </button>
-                    
-                    <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                        PAGE ${meta.page} / ${meta.last_page}
-                    </span>
-                    
-                    <button onclick="window.fetchData(true, ${meta.page + 1})" ${meta.page >= meta.last_page ? "disabled" : ""} 
-                        class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase text-slate-600 disabled:opacity-30 hover:bg-slate-100 transition-all shadow-sm">
-                        Suivant <i class="fa-solid fa-chevron-right"></i>
-                    </button>
-                `;
+          <button onclick="window.fetchData(true, ${meta.page - 1})" ${meta.page <= 1 ? "disabled" : ""} 
+            class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase text-slate-600 disabled:opacity-30 hover:bg-slate-100 transition-all shadow-sm">
+            <i class="fa-solid fa-chevron-left"></i> Précédent
+          </button>
+          <span class="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+            PAGE ${meta.page} / ${meta.last_page}
+          </span>
+          <button onclick="window.fetchData(true, ${meta.page + 1})" ${meta.page >= meta.last_page ? "disabled" : ""} 
+            class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase text-slate-600 disabled:opacity-30 hover:bg-slate-100 transition-all shadow-sm">
+            Suivant <i class="fa-solid fa-chevron-right"></i>
+          </button>
+        `;
       } else {
         paginationFooter.innerHTML = `<span class="text-[10px] font-black text-slate-300 uppercase tracking-widest">Fin de liste</span>`;
       }
     }
 
-    // 6. Mise à jour graphiques
     window.renderCharts();
-
     if (AppState.currentUser.role !== "EMPLOYEE") {
       window.fetchLeaveRequests();
     }
+    
   } catch (e) {
     console.error("❌ ERREUR FETCH:", e);
+    
+    // 🔥 TENTATIVE DE CHARGEMENT DEPUIS LE CACHE LOCAL
+    const cachedEmployees = getCachedEmployees();
+    if (cachedEmployees && cachedEmployees.length > 0) {
+      console.log("📡 Mode hors-ligne : utilisation du cache local");
+      AppState.employees = cachedEmployees;
+      renderData();
+      loadMyProfile();
+      
+      const cachedMeta = getCachedEmployeesMeta();
+      if (cachedMeta && cachedMeta.last_page > 1) {
+        const paginationFooter = document.getElementById("employee-pagination-footer");
+        if (paginationFooter) {
+          paginationFooter.innerHTML = `
+            <span class="text-[10px] font-black text-orange-500 uppercase tracking-widest">⚠️ Mode hors-ligne - données en cache</span>
+          `;
+        }
+      }
+      return;
+    }
+    
+    // Sinon, essayer le cache Supabase
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
       AppState.employees = JSON.parse(cached);
       renderData();
       loadMyProfile();
     } else {
-      window.Swal.fire(
-        "Erreur Connexion",
-        "Impossible de charger vos informations.",
-        "error",
-      );
+      window.Swal.fire("Erreur Connexion", "Impossible de charger vos informations.", "error");
     }
   }
 }
-
 
 
 
@@ -3089,4 +3079,57 @@ export async function downloadEmployeeZip(empId, empName) {
         console.error("Export ZIP Error:", e);
         Swal.fire("Échec", e.message, "error");
     }
+}
+
+
+// ============================================================
+// FONCTIONS DE CACHE POUR MODE HORS-LIGNE
+// ============================================================
+
+// Sauvegarde des employés dans localStorage pour le mode hors-ligne
+export function cacheEmployeesLocally(employees) {
+  try {
+    const cacheData = {
+      data: employees,
+      timestamp: Date.now(),
+      expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000) // expire dans 7 jours
+    };
+    localStorage.setItem('sirh_employees_cache', JSON.stringify(cacheData));
+    console.log("💾 Données employés mises en cache localement");
+  } catch (e) {
+    console.warn("Impossible de mettre en cache local", e);
+  }
+}
+
+// Récupération des employés depuis le cache local
+export function getCachedEmployees() {
+  try {
+    const cached = localStorage.getItem('sirh_employees_cache');
+    if (!cached) return null;
+    const cacheData = JSON.parse(cached);
+    if (cacheData.expiresAt < Date.now()) {
+      localStorage.removeItem('sirh_employees_cache');
+      return null;
+    }
+    return cacheData.data;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Sauvegarde des métadonnées (pagination, etc.)
+export function cacheEmployeesMeta(meta) {
+  try {
+    localStorage.setItem('sirh_employees_meta', JSON.stringify(meta));
+  } catch (e) {}
+}
+
+export function getCachedEmployeesMeta() {
+  try {
+    const cached = localStorage.getItem('sirh_employees_meta');
+    if (!cached) return null;
+    return JSON.parse(cached);
+  } catch (e) {
+    return null;
+  }
 }
