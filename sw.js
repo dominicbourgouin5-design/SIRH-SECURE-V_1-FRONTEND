@@ -1,4 +1,4 @@
-const CACHE_NAME = "sirh-cache-v6";
+const CACHE_NAME = "sirh-cache-v7";
 const STATIC_ASSETS = [
   "./",
   "./index.html",
@@ -32,7 +32,7 @@ self.addEventListener("install", (e) => {
   );
 });
 
-// Activation - nettoyage des anciens caches
+// Activation - nettoyage
 self.addEventListener("activate", (e) => {
   e.waitUntil(
     caches.keys().then((cacheNames) => {
@@ -49,54 +49,81 @@ self.addEventListener("activate", (e) => {
   self.clients.claim();
 });
 
-// Stratégie de fetch : Cache d'abord, puis réseau
+// Stratégie de fetch améliorée
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   
-  // Pour les requêtes API GET (lecture des données)
-  if (e.request.method === 'GET' && url.pathname.includes('/api/')) {
+  // 1. Pour les fichiers statiques (CSS, JS, HTML) -> Cache d'abord
+  if (e.request.destination === 'script' || 
+      e.request.destination === 'style' || 
+      e.request.destination === 'document' ||
+      e.request.url.includes('.css') ||
+      e.request.url.includes('.js')) {
     e.respondWith(
-      caches.open(CACHE_NAME).then(async (cache) => {
-        try {
-          // On tente le réseau d'abord pour les données fraîches
-          const networkResponse = await fetch(e.request);
-          if (networkResponse && networkResponse.status === 200) {
-            cache.put(e.request, networkResponse.clone());
-          }
-          return networkResponse;
-        } catch (error) {
-          // Si hors-ligne, on sert le cache
-          const cachedResponse = await cache.match(e.request);
-          if (cachedResponse) {
-            console.log("📡 SW: Service hors-ligne - données depuis cache");
-            return cachedResponse;
-          }
-          // Si pas de cache, on retourne une erreur
-          return new Response(JSON.stringify({ error: "Hors ligne", data: [] }), {
-            status: 503,
-            headers: { 'Content-Type': 'application/json' }
-          });
-        }
+      caches.match(e.request).then((cached) => {
+        return cached || fetch(e.request).catch(() => {
+          return caches.match('./index.html');
+        });
       })
     );
     return;
   }
   
-  // Pour les fichiers statiques (CSS, JS, HTML)
-  e.respondWith(
-    caches.match(e.request).then((cachedResponse) => {
-      return cachedResponse || fetch(e.request).catch(() => {
-        // Si c'est une page HTML et qu'on est hors-ligne, on sert la page d'accueil
-        if (e.request.headers.get('accept').includes('text/html')) {
-          return caches.match('./index.html');
+  // 2. Pour les images et PDF -> Cache d'abord
+  if (e.request.destination === 'image' || 
+      e.request.url.includes('.pdf') ||
+      e.request.url.includes('.jpg') ||
+      e.request.url.includes('.png')) {
+    e.respondWith(
+      caches.match(e.request).then((cached) => {
+        if (cached) return cached;
+        return fetch(e.request).then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+          }
+          return response;
+        });
+      })
+    );
+    return;
+  }
+  
+  // 3. Pour les API GET -> Réseau d'abord, cache en fallback
+  if (e.request.method === 'GET' && url.pathname.includes('/api/')) {
+    e.respondWith(
+      fetch(e.request).then((response) => {
+        if (response.ok) {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
         }
-        return new Response('Hors ligne', { status: 503 });
+        return response;
+      }).catch(async () => {
+        const cached = await caches.match(e.request);
+        if (cached) {
+          console.log("📡 API servie depuis le cache:", url.pathname);
+          return cached;
+        }
+        return new Response(JSON.stringify({ error: "Hors ligne", data: [] }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' }
+        });
+      })
+    );
+    return;
+  }
+  
+  // 4. Pour tout le reste -> Cache d'abord
+  e.respondWith(
+    caches.match(e.request).then((cached) => {
+      return cached || fetch(e.request).catch(() => {
+        return new Response('Contenu non disponible hors ligne', { status: 503 });
       });
     })
   );
 });
 
-// Notifications Push
+// Notifications
 self.addEventListener('push', (event) => {
   if (!event.data) return;
   const data = event.data.json();
