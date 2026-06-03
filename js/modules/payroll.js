@@ -49,8 +49,28 @@ export async function loadAccountingView(page = 1) {
     ]);
 
     const result = await resEmp.json();
-    const employeesToPay = result.data || [];
-    const meta = result.meta || { total: 0, page: 1, last_page: 1 };
+    
+    // 🔥 DÉTECTION DU FORMAT DE RÉPONSE
+    let employeesToPay = [];
+    let meta = { total: 0, page: 1, last_page: 1 };
+    
+    if (Array.isArray(result)) {
+        // Cas 1 : Le backend renvoie directement un tableau
+        employeesToPay = result;
+        meta = { 
+            total: result.length, 
+            page: currentPayrollPage, 
+            last_page: 1 
+        };
+    } else if (result.data && Array.isArray(result.data)) {
+        // Cas 2 : Le backend renvoie { data: [], meta: {} }
+        employeesToPay = result.data;
+        meta = result.meta || { total: employeesToPay.length, page: 1, last_page: 1 };
+    } else {
+        // Cas 3 : Format inattendu
+        console.error("Format de réponse inattendu:", result);
+        employeesToPay = [];
+    }
     
     // Sauvegarder les métadonnées pour la pagination
     currentPayrollMeta = meta;
