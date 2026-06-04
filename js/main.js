@@ -232,6 +232,7 @@ window.addInteraction = CRM.addInteraction;
 window.openCrmSettings = CRM.openCrmSettings;
 window.saveCrmField = CRM.saveCrmField;
 window.uploadCrmFile = CRM.uploadCrmFile;
+window.initTutorial = UI.initTutorial;
 
 
 // --- Divers / Utilitaires ---
@@ -249,6 +250,7 @@ window.blobToDataURL = Utils.blobToDataURL || (async (b) => new Promise(r => { c
 // ==============================================================
 window.addEventListener("DOMContentLoaded", () => {
   UI.applyBranding();
+  UI.initTutorial();
   UI.initDarkMode();
 
   document.getElementById("current-date").innerText =
