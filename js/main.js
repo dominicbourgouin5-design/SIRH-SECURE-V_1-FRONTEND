@@ -43,6 +43,8 @@ window.requestNotificationPermission = UI.requestNotificationPermission;
 window.applyBranding = UI.applyBranding;
 window.initDarkMode = UI.initDarkMode;
 window.subscribeUserToPush = UI.subscribeUserToPush;
+window.fetchTutorials = UI.fetchTutorials;
+window.initTutorial = UI.initTutorial;
 
 // --- Ressources Humaines (HR) ---
 window.downloadEmployeeZip = HR.downloadEmployeeZip;
@@ -105,7 +107,6 @@ window.showLeaveDetail = Leaves.showLeaveDetail;
 window.processLeave = Leaves.processLeave;
 window.fetchLeaveRequests = Leaves.fetchLeaveRequests; 
 
-
 // --- Comptabilité & Paie (Payroll) ---
 window.toggleTargetValues = Admin.toggleTargetValues;
 window.saveSegmentedRule = Admin.saveSegmentedRule;
@@ -166,16 +167,12 @@ window.peakText = Ops.peakText;
 window.unpeakText = Ops.unpeakText;
 window.toggleTextFixed = Ops.toggleTextFixed;
 window.startScanner = Ops.startScanner;
-window.fetchMobileReports = Ops.fetchMobileReports;
 window.openAttendancePicker = Ops.openAttendancePicker;
 window.fetchAttendanceReport = Ops.fetchAttendanceReport;
 window.renderPersonalReport = Ops.renderPersonalReport;
 window.downloadReportCSV = Ops.downloadReportCSV;
 window.fetchMobileSchedules = Ops.fetchMobileSchedules;
 window.updateClockUI = Ops.updateClockUI;
-
-
-
 
 // --- Communication (Chat) ---
 window.fetchMessages = Chat.fetchMessages;
@@ -192,7 +189,6 @@ window.useCurrentLocation = Admin.useCurrentLocation;
 window.openSaveProductModal = Admin.openSaveProductModal;
 window.viewProductDetail = Admin.viewProductDetail;
 window.filterProductsLocally = Admin.filterProductsLocally;
-window.deleteProduct = Admin.deleteProduct;
 window.openEditProductModal = Admin.openEditProductModal;
 window.openAddTemplateModal = Admin.openAddTemplateModal;
 window.deleteTemplate = Admin.deleteTemplate;
@@ -222,11 +218,7 @@ window.fetchFlashMessage = Admin.fetchFlashMessage;
 window.triggerRobotCheck = Admin.triggerRobotCheck;
 window.applyDynamicLabels = Utils.applyDynamicLabels;
 
-
-
-// Branchements Window
-window.fetchTutorials = UI.fetchTutorials;
-window.initTutorial = UI.initTutorial;
+// --- Branchements Window CRM & Tutoriel ---
 window.initCRM = CRM.initCRM;
 window.openLeadModal = CRM.openLeadModal;
 window.saveLeadData = CRM.saveLeadData;
@@ -234,10 +226,6 @@ window.addInteraction = CRM.addInteraction;
 window.openCrmSettings = CRM.openCrmSettings;
 window.saveCrmField = CRM.saveCrmField;
 window.uploadCrmFile = CRM.uploadCrmFile;
-window.initTutorial = UI.initTutorial;
-window.fetchTutorials = UI.fetchTutorials;      
-
-
 
 // --- Divers / Utilitaires ---
 window.closeEditor = () => {
@@ -245,17 +233,15 @@ window.closeEditor = () => {
   if (editor) editor.classList.add("hidden");
 };
 window.formatProductTags = formatProductTags;
-
-
-
 window.blobToDataURL = Utils.blobToDataURL || (async (b) => new Promise(r => { const rd = new FileReader(); rd.onload = e => r(e.target.result); rd.readAsDataURL(b); }));
+
 // ==============================================================
 // 3. LOGIQUE D'INITIALISATION DE L'APPLICATION
 // ==============================================================
 window.addEventListener("DOMContentLoaded", () => {
   UI.applyBranding();
-  UI.initTutorial();
   UI.initDarkMode();
+  UI.initTutorial();
 
   document.getElementById("current-date").innerText =
     new Date().toLocaleDateString("fr-FR");
@@ -301,16 +287,10 @@ document.addEventListener("touchend", (e) => {
   }
 });
 
-
-
-
-
 // --- Gestion du Réseau (Online/Offline) ---
 window.addEventListener("online", () => {
-    // 1. Nettoyage de l'UI
     document.body.classList.remove("offline-mode");
     
-    // 2. Alerte de retour au calme
     const Toast = Swal.mixin({
         toast: true,
         position: 'top-end',
@@ -324,21 +304,16 @@ window.addEventListener("online", () => {
         text: "Synchronisation des données..."
     });
 
-    // 3. LANCEMENT DE LA SYNCHRONISATION
-    // On appelle la fonction de ops.js
     if (typeof window.syncOfflineData === 'function') {
         window.syncOfflineData();
     }
 
-    // 4. Actualisation des données générales
     if (AppState.currentUser) window.refreshAllData(false);
 });
 
 window.addEventListener("offline", () => {
-    // 1. Marquer l'interface visuellement
     document.body.classList.add("offline-mode");
 
-    // 2. Alerte utilisateur
     Swal.fire({
         icon: "warning",
         title: "Mode Hors-ligne",
@@ -349,7 +324,6 @@ window.addEventListener("offline", () => {
         timer: 5000
     });
 });
-
 
 // --- Gestion de l'Installation PWA ---
 window.addEventListener("beforeinstallprompt", (e) => {
@@ -385,31 +359,6 @@ window.addEventListener("appinstalled", () => {
   },
 );
 
-
-// Fonction pour abonner l'utilisateur aux notifs
-async function subscribeUserToPush() {
-    const registration = await navigator.serviceWorker.ready;
-    
-    // On demande au serveur la "Clé Publique VAPID" (Clé de sécurité)
-    const response = await fetch(`${SIRH_CONFIG.apiBaseUrl}/get-push-key`);
-    const { publicKey } = await response.json();
-
-    const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: publicKey
-    });
-
-    // On envoie cet abonnement à la base de données Supabase
-    // pour savoir à quel téléphone envoyer les notifs plus tard
-    await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/save-subscription`, {
-        method: 'POST',
-        body: JSON.stringify({
-            subscription: subscription,
-            user_id: AppState.currentUser.id
-        })
-    });
-}
-
 // --- Enregistrement du Service Worker ---
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -419,4 +368,3 @@ if ("serviceWorker" in navigator) {
       .catch((err) => console.log("Erreur SW", err));
   });
 }
-
