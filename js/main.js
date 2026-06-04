@@ -235,6 +235,8 @@ window.openCrmSettings = CRM.openCrmSettings;
 window.saveCrmField = CRM.saveCrmField;
 window.uploadCrmFile = CRM.uploadCrmFile;
 window.initTutorial = UI.initTutorial;
+window.fetchTutorials = UI.fetchTutorials;      
+
 
 
 // --- Divers / Utilitaires ---
