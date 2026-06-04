@@ -863,6 +863,24 @@ async function skipTutorial() {
     closeTutorial();
 }
 
+// Initialiser le tutoriel après le chargement complet
+export function initTutorial() {
+    // Attendre que l'utilisateur soit connecté et que l'interface soit prête
+    const checkUser = setInterval(() => {
+        if (AppState.currentUser && document.getElementById('view-dash')) {
+            clearInterval(checkUser);
+            setTimeout(() => {
+                if (typeof window.fetchTutorials === 'function') {
+                    window.fetchTutorials();
+                }
+            }, 2000);
+        }
+    }, 500);
+    
+    // Timeout de sécurité (arrêter après 10 secondes)
+    setTimeout(() => clearInterval(checkUser), 10000);
+}
+
 // Exporter les fonctions
 window.fetchTutorials = fetchTutorials;
 window.startTutorial = startTutorial;
