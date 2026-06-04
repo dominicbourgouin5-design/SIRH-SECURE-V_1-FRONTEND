@@ -639,3 +639,233 @@ export async function requestNotificationPermission() {
     }
   }
 }
+
+
+
+// ============================================================
+// TUTORIEL INTERACTIF (TOUR GUIDÉ)
+// ============================================================
+
+let currentTutorial = null;
+let currentStepIndex = 0;
+let tutorialSteps = [];
+
+// Récupérer les tutoriels disponibles
+async function fetchTutorials() {
+    try {
+        const response = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/tutorials`);
+        const tutorials = await response.json();
+        
+        // Filtrer les tutoriels non complétés
+        const available = tutorials.filter(t => !t.progress?.is_completed);
+        
+        if (available.length > 0 && await shouldShowTutorial()) {
+            startTutorial(available[0]);
+        }
+    } catch (error) {
+        console.error("Erreur chargement tutoriels:", error);
+    }
+}
+
+// Vérifier si afficher le tutoriel
+async function shouldShowTutorial() {
+    try {
+        const response = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/tutorials/should-show`);
+        const data = await response.json();
+        return data.show;
+    } catch (error) {
+        return false;
+    }
+}
+
+// Démarrer un tutoriel
+async function startTutorial(tutorial) {
+    currentTutorial = tutorial;
+    currentStepIndex = 0;
+    tutorialSteps = tutorial.steps || [];
+    
+    // Enregistrer le début du tutoriel
+    await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/tutorials/start`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tutorialId: tutorial.id })
+    });
+    
+    showStep(currentStepIndex);
+}
+
+// Afficher une étape
+async function showStep(index) {
+    if (!currentTutorial || !tutorialSteps[index]) {
+        completeTutorial();
+        return;
+    }
+    
+    const step = tutorialSteps[index];
+    const totalSteps = tutorialSteps.length;
+    
+    // Mettre à jour l'interface
+    const stepBadge = document.getElementById('tutorial-step-badge');
+    const stepTitle = document.getElementById('tutorial-step-title');
+    const stepContent = document.getElementById('tutorial-step-content');
+    const nextBtn = document.getElementById('tutorial-next-btn');
+    
+    if (stepBadge) stepBadge.innerText = `Étape ${index + 1}/${totalSteps}`;
+    if (stepTitle) stepTitle.innerText = step.title;
+    if (stepContent) stepContent.innerText = step.content;
+    
+    // Afficher l'overlay
+    const overlay = document.getElementById('tutorial-overlay');
+    if (overlay) overlay.classList.remove('hidden');
+    
+    // Mettre en évidence l'élément cible
+    if (step.target && step.target !== '') {
+        await highlightElement(step.target, step.action);
+    }
+    
+    // Bouton suivant
+    if (index === totalSteps - 1) {
+        if (nextBtn) nextBtn.innerHTML = '<i class="fa-solid fa-check mr-2"></i> Terminer';
+    } else {
+        if (nextBtn) nextBtn.innerHTML = 'Suivant <i class="fa-solid fa-arrow-right ml-2"></i>';
+    }
+}
+
+// Mettre en évidence un élément
+async function highlightElement(selector, action) {
+    // Nettoyer l'ancien highlight
+    document.querySelectorAll('.tutorial-highlight').forEach(el => {
+        el.classList.remove('tutorial-highlight');
+    });
+    
+    // Attendre que l'élément soit présent (pour les vues qui chargent)
+    let attempts = 0;
+    let element = null;
+    
+    while (attempts < 20 && !element) {
+        element = document.querySelector(selector);
+        if (!element) {
+            await new Promise(r => setTimeout(r, 300));
+            attempts++;
+        }
+    }
+    
+    if (element) {
+        element.classList.add('tutorial-highlight');
+        
+        // Faire défiler jusqu'à l'élément
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        
+        // Si action = click, on attend que l'utilisateur clique
+        if (action === 'click') {
+            // Désactiver le bouton suivant temporairement
+            const nextBtn = document.getElementById('tutorial-next-btn');
+            if (nextBtn) {
+                nextBtn.disabled = true;
+                nextBtn.style.opacity = '0.5';
+            }
+            
+            // Attendre le clic sur l'élément
+            const clickHandler = async () => {
+                element.removeEventListener('click', clickHandler);
+                if (nextBtn) {
+                    nextBtn.disabled = false;
+                    nextBtn.style.opacity = '1';
+                }
+                // Attendre que la vue change
+                setTimeout(() => {
+                    document.getElementById('tutorial-next-btn').click();
+                }, 500);
+            };
+            element.addEventListener('click', clickHandler, { once: true });
+        }
+    }
+}
+
+// Passer à l'étape suivante
+async function nextTutorialStep() {
+    if (!currentTutorial || !tutorialSteps[currentStepIndex]) return;
+    
+    const currentStep = tutorialSteps[currentStepIndex];
+    
+    // Enregistrer la progression
+    await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/tutorials/next`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            tutorialId: currentTutorial.id,
+            currentStep: currentStepIndex,
+            completedStep: currentStepIndex
+        })
+    });
+    
+    // Nettoyer le highlight
+    if (currentStep.target) {
+        const element = document.querySelector(currentStep.target);
+        if (element) element.classList.remove('tutorial-highlight');
+    }
+    
+    currentStepIndex++;
+    
+    if (currentStepIndex >= tutorialSteps.length) {
+        completeTutorial();
+    } else {
+        showStep(currentStepIndex);
+    }
+}
+
+// Terminer le tutoriel
+async function completeTutorial() {
+    if (currentTutorial) {
+        await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/tutorials/complete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tutorialId: currentTutorial.id })
+        });
+    }
+    
+    closeTutorial();
+    
+    // Afficher un message de félicitations
+    Swal.fire({
+        icon: 'success',
+        title: 'Félicitations !',
+        text: 'Vous avez terminé la visite guidée. Bonne utilisation de SIRH SECURE !',
+        confirmButtonColor: '#0f172a',
+        timer: 3000
+    });
+}
+
+// Fermer le tutoriel
+function closeTutorial() {
+    const overlay = document.getElementById('tutorial-overlay');
+    if (overlay) overlay.classList.add('hidden');
+    
+    // Nettoyer les highlights
+    document.querySelectorAll('.tutorial-highlight').forEach(el => {
+        el.classList.remove('tutorial-highlight');
+    });
+    
+    currentTutorial = null;
+    currentStepIndex = 0;
+    tutorialSteps = [];
+}
+
+// Passer le tutoriel (skip)
+async function skipTutorial() {
+    if (currentTutorial) {
+        await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/tutorials/reset`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tutorialId: currentTutorial.id })
+        });
+    }
+    closeTutorial();
+}
+
+// Exporter les fonctions
+window.fetchTutorials = fetchTutorials;
+window.startTutorial = startTutorial;
+window.nextTutorialStep = nextTutorialStep;
+window.closeTutorial = closeTutorial;
+window.skipTutorial = skipTutorial;
