@@ -2255,6 +2255,71 @@
         </div>
     </div>
 
+
+
+<!-- ============================================================ -->
+<!-- TUTORIEL INTERACTIF (TOUR GUIDÉ) -->
+<!-- ============================================================ -->
+<div id="tutorial-overlay" class="fixed inset-0 bg-black/70 z-[10000] hidden flex items-center justify-center" style="backdrop-filter: blur(4px);">
+    <div id="tutorial-card" class="bg-white rounded-2xl max-w-md w-full mx-4 shadow-2xl animate-fadeIn overflow-hidden">
+        <!-- En-tête -->
+        <div class="bg-slate-900 px-6 py-4 text-white flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-graduation-cap text-blue-400"></i>
+                <h3 id="tutorial-title" class="font-black text-sm uppercase tracking-wider">Tutoriel</h3>
+            </div>
+            <button onclick="closeTutorial()" class="text-slate-400 hover:text-white transition-colors">
+                <i class="fa-solid fa-xmark text-xl"></i>
+            </button>
+        </div>
+        
+        <!-- Contenu -->
+        <div class="p-6">
+            <div class="flex items-center gap-2 mb-2">
+                <span id="tutorial-step-badge" class="bg-blue-100 text-blue-700 text-[10px] font-black px-2 py-1 rounded-full">Étape 1/5</span>
+            </div>
+            <h4 id="tutorial-step-title" class="text-lg font-black text-slate-800 mb-3">Bienvenue !</h4>
+            <p id="tutorial-step-content" class="text-slate-600 text-sm leading-relaxed mb-6">
+                Découvrons ensemble les fonctionnalités principales de l'application.
+            </p>
+            
+            <!-- Zone de mise en évidence (cible) -->
+            <div id="tutorial-highlight-target" class="hidden"></div>
+            
+            <!-- Actions -->
+            <div class="flex gap-3">
+                <button onclick="skipTutorial()" class="flex-1 px-4 py-2.5 text-slate-500 text-xs font-bold uppercase tracking-wider hover:bg-slate-100 rounded-xl transition-all">
+                    Passer
+                </button>
+                <button id="tutorial-next-btn" onclick="nextTutorialStep()" class="flex-1 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider hover:bg-blue-700 transition-all shadow-lg">
+                    Suivant
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Style pour le surlignage -->
+<style>
+    .tutorial-highlight {
+        position: relative;
+        z-index: 10001 !important;
+        box-shadow: 0 0 0 4px #3b82f6, 0 0 0 8px rgba(59, 130, 246, 0.3);
+        border-radius: 12px;
+        transition: all 0.3s ease;
+        animation: pulse-blue 1.5s infinite;
+    }
+    
+    @keyframes pulse-blue {
+        0%, 100% { box-shadow: 0 0 0 4px #3b82f6, 0 0 0 8px rgba(59, 130, 246, 0.3); }
+        50% { box-shadow: 0 0 0 6px #3b82f6, 0 0 0 12px rgba(59, 130, 246, 0.5); }
+    }
+    
+    .tutorial-scroll-to {
+        scroll-margin-top: 100px;
+    }
+</style>
+        
 <script type="module" src="js/main.js"></script>
 
 
