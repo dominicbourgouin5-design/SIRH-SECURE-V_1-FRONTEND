@@ -225,6 +225,8 @@ window.applyDynamicLabels = Utils.applyDynamicLabels;
 
 
 // Branchements Window
+window.fetchTutorials = UI.fetchTutorials;
+window.initTutorial = UI.initTutorial;
 window.initCRM = CRM.initCRM;
 window.openLeadModal = CRM.openLeadModal;
 window.saveLeadData = CRM.saveLeadData;
@@ -415,3 +417,4 @@ if ("serviceWorker" in navigator) {
       .catch((err) => console.log("Erreur SW", err));
   });
 }
+
