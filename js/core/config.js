@@ -46,7 +46,8 @@ export const URL_ADD_SCHEDULE = `${SIRH_CONFIG.apiBaseUrl}/add-schedule`;
 export const URL_LIST_SCHEDULES = `${SIRH_CONFIG.apiBaseUrl}/list-schedules`;
 export const URL_LIST_MOBILE_LOCATIONS = `${SIRH_CONFIG.apiBaseUrl}/list-mobile-locations`;
 
-export const SCAN_KEY = "SIGD_SECURE_2025";
+// SCAN_KEY supprimée : une clé partagée écrite dans un frontend public
+// n'est pas un secret. Le scan terminal s'authentifie par le jeton de session.
 export const URL_REDIRECT_FAILURE = "https://google.com";
 export const REFRESH_THRESHOLD = 300000;
 export const ITEMS_PER_PAGE = 10;

@@ -1861,7 +1861,7 @@ export async function generateDraftContract(id) {
 
     // 2. Appel au serveur
     const response = await fetch(
-      `${URL_CONTRACT_GENERATE}?id=${id}&token=${token}`,
+      `${URL_CONTRACT_GENERATE}?id=${id}`,
       {
         method: "GET",
         headers: {
@@ -2172,9 +2172,11 @@ export async function downloadMyBadge() {
     const photoUrl = myData.photo ? formatGoogleLink(myData.photo) : "";
 
     // Construction de l'URL vers ton API de badge
-    const url = `${URL_BADGE_GEN}?id=${encodeURIComponent(myData.id)}&nom=${encodeURIComponent(myData.nom)}&poste=${encodeURIComponent(myData.poste)}&photo=${encodeURIComponent(photoUrl)}&agent=${encodeURIComponent(AppState.currentUser.nom)}&token=${token}`;
+    const url = `${URL_BADGE_GEN}?id=${encodeURIComponent(myData.id)}&nom=${encodeURIComponent(myData.nom)}&poste=${encodeURIComponent(myData.poste)}&photo=${encodeURIComponent(photoUrl)}&agent=${encodeURIComponent(AppState.currentUser.nom)}`;
 
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
     if (!response.ok) throw new Error("Erreur serveur");
 
     const htmlContent = await response.text();
@@ -2210,11 +2212,13 @@ export async function printBadge(id) {
 
   try {
     // On construit l'URL
-    const url = `${URL_BADGE_GEN}?id=${encodeURIComponent(id)}&nom=${encodeURIComponent(e.nom)}&poste=${encodeURIComponent(e.poste)}&photo=${encodeURIComponent(formatGoogleLink(e.photo) || "")}&agent=${encodeURIComponent(AppState.currentUser.nom)}&token=${token}`;
+    const url = `${URL_BADGE_GEN}?id=${encodeURIComponent(id)}&nom=${encodeURIComponent(e.nom)}&poste=${encodeURIComponent(e.poste)}&photo=${encodeURIComponent(formatGoogleLink(e.photo) || "")}&agent=${encodeURIComponent(AppState.currentUser.nom)}`;
 
     // AU LIEU DE FAIRE window.open(url)...
     // On va chercher le contenu (le code HTML du badge)
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
 
     if (!response.ok) throw new Error("Erreur génération");
 

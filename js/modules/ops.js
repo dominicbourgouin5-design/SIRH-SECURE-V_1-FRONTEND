@@ -4,7 +4,6 @@ import {
   URL_CLOCK_ACTION,
   URL_GATEKEEPER,
   URL_REDIRECT_FAILURE,
-  SCAN_KEY,
   URL_READ_REPORT,
 } from "../core/config.js";
 import { secureFetch } from "../core/api.js";
@@ -2235,7 +2234,7 @@ export function startScanner() {
             id = new URL(d).searchParams.get("id");
           } catch (e) {}
           secureFetch(
-            `${URL_GATEKEEPER}?id=${encodeURIComponent(id)}&key=${SCAN_KEY}&agent=${encodeURIComponent(AppState.currentUser.nom)}`,
+            `${URL_GATEKEEPER}?id=${encodeURIComponent(id)}&agent=${encodeURIComponent(AppState.currentUser.nom)}`,
           )
             .then((r) => r.json())
             .then((d) => {

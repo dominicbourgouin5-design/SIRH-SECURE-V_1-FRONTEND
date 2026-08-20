@@ -25,10 +25,14 @@ export async function handleLogin(e) {
   const timeoutId = setTimeout(() => controller.abort(), 60000);
 
   try {
-    const response = await fetch(
-      `${URL_LOGIN}?u=${encodeURIComponent(u.toLowerCase())}&p=${encodeURIComponent(p)}`,
-      { signal: controller.signal },
-    );
+    // POST + corps JSON : en GET, le mot de passe partait dans l'URL
+    // (logs serveur, historique du navigateur, en-tête Referer).
+    const response = await fetch(URL_LOGIN, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ u: u.toLowerCase(), p: p }),
+      signal: controller.signal,
+    });
     clearTimeout(timeoutId);
 
     const d = await response.json();
@@ -510,7 +514,7 @@ export async function handleForgotPassword() {
   }
 }
 
-export function handleLogout() {
+export async function handleLogout() {
   // 1. Arrêter les flux caméra s'ils tournent
   if (AppState.videoStream)
     AppState.videoStream.getTracks().forEach((t) => t.stop());
@@ -518,14 +522,28 @@ export function handleLogout() {
     AppState.contractStream.getTracks().forEach((t) => t.stop());
 
   // 2. VIDER TOTALEMENT LE CACHE ET LA MÉMOIRE
+  // secureFetch met en cache les réponses GET (fiches employés, paie,
+  // congés...). Sur un poste partagé, tout cela restait lisible par
+  // l'utilisateur suivant : on purge donc aussi CacheStorage.
   localStorage.removeItem("sirh_token");
   localStorage.removeItem("sirh_user_session");
   localStorage.removeItem("sirh_last_view");
-  // Optionnel : vider les préférences de widgets pour repartir à zéro
   const keys = Object.keys(localStorage);
   keys.forEach((k) => {
-    if (k.startsWith("pref_")) localStorage.removeItem(k);
+    if (k.startsWith("pref_") || k.startsWith("sirh_")) {
+      localStorage.removeItem(k);
+    }
   });
+  sessionStorage.clear();
+
+  try {
+    if (window.caches) {
+      const names = await caches.keys();
+      await Promise.all(names.map((n) => caches.delete(n)));
+    }
+  } catch (e) {
+    console.warn("Purge du cache impossible :", e);
+  }
 
   // 3. CACHER L'INTERFACE IMMÉDIATEMENT (évite le flash au prochain login)
   const appLayout = document.getElementById("app-layout");
