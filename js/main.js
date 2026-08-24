@@ -156,6 +156,9 @@ window.deletePrescripteur = Ops.deletePrescripteur;
 window.filterPrescripteursLocally = Ops.filterPrescripteursLocally;
 window.fetchPrescripteursManagement = Ops.fetchPrescripteursManagement;
 window.fetchMobileLocations = Ops.fetchMobileLocations;
+window.offerRegisterLocation = Ops.offerRegisterLocation;
+window.fetchPendingLocations = Ops.fetchPendingLocations;
+window.handleLocationValidation = Ops.handleLocationValidation;
 window.changeReportTab = Ops.changeReportTab;
 window.setReportView = Ops.setReportView;
 window.handleReportSearch = Ops.handleReportSearch;
@@ -255,7 +258,12 @@ window.addEventListener("DOMContentLoaded", () => {
       const u = JSON.parse(session);
       if (u && u.nom) {
         console.log("Restauration session : " + u.nom);
-        Auth.setSession(u.nom, u.role, u.id, u.permissions, u.employee_type);
+        Auth.setSession(u.nom, u.role, u.id, u.permissions, u.employee_type, {
+          secteur: u.secteur,
+          perimetre_lieux: u.perimetre_lieux,
+          contenu_pointage: u.contenu_pointage,
+          rythme: u.rythme,
+        });
       } else {
         throw new Error("Session invalide");
       }

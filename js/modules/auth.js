@@ -174,6 +174,10 @@ async function finalizeLogin(data) {
     role: String(r).toUpperCase(),
     id: data.id,
     employee_type: data.employee_type || "OFFICE",
+    secteur: data.secteur || "GENERAL",
+    perimetre_lieux: data.perimetre_lieux || "UN_LIEU",
+    contenu_pointage: data.contenu_pointage || "MINIMAL",
+    rythme: data.rythme || "STANDARD",
     permissions: data.permissions || {},
   };
 
@@ -200,17 +204,27 @@ async function finalizeLogin(data) {
     userData.id,
     data.permissions,
     userData.employee_type,
+    {
+      secteur: userData.secteur,
+      perimetre_lieux: userData.perimetre_lieux,
+      contenu_pointage: userData.contenu_pointage,
+      rythme: userData.rythme,
+    },
   );
 }
 
 
-export async function setSession(n, r, id, perms, type) {
+export async function setSession(n, r, id, perms, type, axes = {}) {
   AppState.currentUser = {
     nom: n,
     role: r,
     id: id,
     permissions: perms,
     employee_type: type || "OFFICE",
+    secteur: axes.secteur || "GENERAL",
+    perimetre_lieux: axes.perimetre_lieux || "UN_LIEU",
+    contenu_pointage: axes.contenu_pointage || "MINIMAL",
+    rythme: axes.rythme || "STANDARD",
   };
 
   // On cache les éléments par défaut (Permissions/Groupes)

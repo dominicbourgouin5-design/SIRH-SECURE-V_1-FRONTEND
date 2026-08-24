@@ -72,6 +72,10 @@ export async function fetchData(forceUpdate = false, page = 1) {
         nom: x.nom,
         date: x.date_embauche,
         employee_type: x.employee_type || "OFFICE",
+        secteur: x.secteur || "GENERAL",
+        perimetre_lieux: x.perimetre_lieux || "UN_LIEU",
+        contenu_pointage: x.contenu_pointage || "MINIMAL",
+        rythme: x.rythme || "STANDARD",
         poste: x.poste,
         dept: x.departement || "Non défini",
         Solde_Conges: parseFloat(x.solde_conges) || 0,
@@ -642,6 +646,7 @@ export async function loadMyProfile() {
       nom: myRawData.nom,
       date: myRawData.date_embauche,
       employee_type: myRawData.employee_type || "OFFICE",
+      contenu_pointage: myRawData.contenu_pointage || "MINIMAL",
       poste: myRawData.poste,
       dept: myRawData.departement || "Non défini",
       solde_conges: parseFloat(myRawData.solde_conges) || 0,
@@ -753,7 +758,7 @@ export async function loadMyProfile() {
 
     // --- 9. LOGIQUE DE TERRAIN (Conservée) ---
     const mobileSection = document.getElementById("mobile-recap-section");
-    if (myData.employee_type === "MOBILE") {
+    if (myData.contenu_pointage === "COMPLET") {
       if (mobileSection) mobileSection.classList.remove("hidden");
       if (typeof fetchMyActivityRecap === "function") fetchMyActivityRecap();
     } else {
@@ -1204,6 +1209,10 @@ export async function handleOnboarding(e) {
     fd.append("poste", getVal("f-poste"));
     fd.append("dept", getVal("f-dept"));
     fd.append("employee_type", getVal("f-type"));
+    fd.append("secteur", getVal("f-secteur"));
+    fd.append("perimetre_lieux", getVal("f-perimetre-lieux"));
+    fd.append("contenu_pointage", getVal("f-contenu-pointage"));
+    fd.append("rythme", getVal("f-rythme"));
     fd.append("limit", getVal("f-limit")); // type_contrat
     fd.append("role", getVal("f-role"));
 
@@ -1526,6 +1535,10 @@ export async function openEditModal(id) {
 
     // 2. Type & Statut
     document.getElementById("edit-type").value = e.employee_type || "OFFICE";
+    document.getElementById("edit-secteur").value = e.secteur || "GENERAL";
+    document.getElementById("edit-perimetre-lieux").value = e.perimetre_lieux || "UN_LIEU";
+    document.getElementById("edit-contenu-pointage").value = e.contenu_pointage || "MINIMAL";
+    document.getElementById("edit-rythme").value = e.rythme || "STANDARD";
     document.getElementById("edit-statut").value = e.statut || "Actif";
 
     // 3. RÔLE (FORÇAGE ET SÉCURITÉ)
@@ -1602,6 +1615,10 @@ export async function submitUpdate(e) {
     dept: document.getElementById("edit-dept").value,
     limit: document.getElementById("edit-type-contrat").value,
     employee_type: document.getElementById("edit-type").value,
+    secteur: document.getElementById("edit-secteur").value,
+    perimetre_lieux: document.getElementById("edit-perimetre-lieux").value,
+    contenu_pointage: document.getElementById("edit-contenu-pointage").value,
+    rythme: document.getElementById("edit-rythme").value,
     start_date: document.getElementById("edit-start-date").value,
     manager_id: document.getElementById("edit-manager").value || null,
     salaire: document.getElementById("edit-salaire-fixe").value,
@@ -1621,6 +1638,14 @@ export async function submitUpdate(e) {
     changes.dept = newVal.dept;
   if (newVal.employee_type !== AppState.currentEditingOriginal.employee_type)
     changes.employee_type = newVal.employee_type;
+  if (newVal.secteur !== AppState.currentEditingOriginal.secteur)
+    changes.secteur = newVal.secteur;
+  if (newVal.perimetre_lieux !== AppState.currentEditingOriginal.perimetre_lieux)
+    changes.perimetre_lieux = newVal.perimetre_lieux;
+  if (newVal.contenu_pointage !== AppState.currentEditingOriginal.contenu_pointage)
+    changes.contenu_pointage = newVal.contenu_pointage;
+  if (newVal.rythme !== AppState.currentEditingOriginal.rythme)
+    changes.rythme = newVal.rythme;
 
   // Comparaison du manager (attention au type null/string)
   if (newVal.manager_id != AppState.currentEditingOriginal.manager_id) {

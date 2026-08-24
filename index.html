@@ -749,6 +749,24 @@
                         <option value="FIXED">🏠 Agent Site (Fixe)</option>
                         <option value="MOBILE">🚗 Délégué (Nomade)</option>
                     </select>
+                    <select id="f-secteur" class="w-full p-4 bg-slate-50 border rounded-xl font-medium">
+                        <option value="GENERAL">Général</option>
+                        <option value="SANTE">Santé</option>
+                        <option value="SECURITE">Sécurité</option>
+                    </select>
+                    <select id="f-perimetre-lieux" class="w-full p-4 bg-slate-50 border rounded-xl font-medium">
+                        <option value="UN_LIEU">Un lieu fixe</option>
+                        <option value="SITES_ASSIGNES">Sites assignés</option>
+                        <option value="CATALOGUE_OUVERT">Catalogue ouvert (terrain)</option>
+                    </select>
+                    <select id="f-contenu-pointage" class="w-full p-4 bg-slate-50 border rounded-xl font-medium">
+                        <option value="MINIMAL">Pointage simple</option>
+                        <option value="COMPLET">Rapport de visite complet</option>
+                    </select>
+                    <select id="f-rythme" class="w-full p-4 bg-slate-50 border rounded-xl font-medium">
+                        <option value="STANDARD">Standard</option>
+                        <option value="GARDE">Garde / Continu</option>
+                    </select>
                     <select id="f-role" class="w-full p-4 bg-blue-50 border border-blue-200 rounded-xl font-bold text-blue-700"></select>
                 </div>
 
@@ -1669,6 +1687,14 @@
         </div>
     </div>
 
+    <!-- Lieux provisoires proposés par des agents terrain, en attente de validation -->
+    <div id="pending-locations-panel" data-perm="can_validate_locations" class="hidden mb-8 bg-amber-50 border border-amber-200 rounded-2xl p-6">
+        <h3 class="text-sm font-black text-amber-800 uppercase tracking-widest mb-4">
+            <i class="fa-solid fa-triangle-exclamation mr-2"></i>Lieux en attente de validation
+        </h3>
+        <div id="pending-locations-list" class="space-y-3"></div>
+    </div>
+
     <!-- Grille des lieux -->
     <div id="locations-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <!-- Rempli par JS -->
@@ -2052,6 +2078,38 @@
                         <option value="MOBILE">🚗 Terrain (Liberté GPS)</option>
                         <option value="FIXED">🏠 Agent Site (Fixe)</option>
                     </select>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Secteur</label>
+                        <select id="edit-secteur" class="w-full p-3 bg-white border border-indigo-100 rounded-xl text-xs font-bold">
+                            <option value="GENERAL">Général</option>
+                            <option value="SANTE">Santé</option>
+                            <option value="SECURITE">Sécurité</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Périmètre de lieux</label>
+                        <select id="edit-perimetre-lieux" class="w-full p-3 bg-white border border-indigo-100 rounded-xl text-xs font-bold">
+                            <option value="UN_LIEU">Un lieu fixe</option>
+                            <option value="SITES_ASSIGNES">Sites assignés</option>
+                            <option value="CATALOGUE_OUVERT">Catalogue ouvert (terrain)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Contenu de pointage</label>
+                        <select id="edit-contenu-pointage" class="w-full p-3 bg-white border border-indigo-100 rounded-xl text-xs font-bold">
+                            <option value="MINIMAL">Pointage simple</option>
+                            <option value="COMPLET">Rapport de visite complet</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[9px] font-black text-slate-400 uppercase mb-2">Rythme</label>
+                        <select id="edit-rythme" class="w-full p-3 bg-white border border-indigo-100 rounded-xl text-xs font-bold">
+                            <option value="STANDARD">Standard</option>
+                            <option value="GARDE">Garde / Continu</option>
+                        </select>
+                    </div>
                 </div>
             </div>
 

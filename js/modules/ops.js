@@ -52,8 +52,8 @@ export function updateClockUI(statusMode) {
     const text = document.getElementById('clock-status-text');
     
     // MODULARISATION : Utilisation de AppState avec sécurité (?)
-    const empType = AppState.currentUser?.employee_type || 'OFFICE'; 
-    
+    const contenuPointage = AppState.currentUser?.contenu_pointage || 'MINIMAL';
+
     if (!btn) return;
 
     // Nettoyage des classes pour repartir sur une base propre
@@ -75,15 +75,15 @@ export function updateClockUI(statusMode) {
     else if (statusMode === 'IN') {
         btn.classList.add('bg-red-500', 'text-white', 'shadow-lg', 'hover:bg-red-400', 'active:scale-95');
         
-        // Texte différent selon le type d'employé
-        const actionLabel = (empType === 'MOBILE') ? "FIN DE VISITE" : "SORTIE";
+        // Texte différent selon le contenu de pointage attendu
+        const actionLabel = (contenuPointage === 'COMPLET') ? "FIN DE VISITE" : "SORTIE";
         btn.innerHTML = `<i class="fa-solid fa-person-walking-arrow-right"></i> <span>${actionLabel}</span>`;
         btn.disabled = false;
         
         dot.classList.add('bg-emerald-500', 'shadow-[0_0_10px_rgba(16,185,129,0.5)]');
         
         if (text) { 
-            text.innerText = (empType === 'MOBILE') ? "EN MISSION" : "EN POSTE"; 
+            text.innerText = (contenuPointage === 'COMPLET') ? "EN MISSION" : "EN POSTE";
             text.className = "text-2xl font-black text-emerald-500"; 
         }
     } 
@@ -177,7 +177,9 @@ export async function handleClockInOut() {
     }
 
     const empData = AppState.employees.find(e => e.id === userId);
-    const isMobile = (empData?.employee_type === 'MOBILE') || (AppState.currentUser?.employee_type === 'MOBILE');
+    const contenuPointage = empData?.contenu_pointage || AppState.currentUser?.contenu_pointage || 'MINIMAL';
+    const perimetreLieux = empData?.perimetre_lieux || AppState.currentUser?.perimetre_lieux || 'UN_LIEU';
+    const isMobile = contenuPointage === 'COMPLET'; // gardé tel quel pour ne pas ré-écrire le bloc modale plus bas
 
     const stopAllCameras = () => {
         if (AppState.proofStream) {
@@ -440,7 +442,9 @@ export async function handleClockInOut() {
                 const [uLat, uLon] = currentGps.split(',').map(parseFloat);
                 for (let z of cachedZones) {
                     const d = getDistance(uLat, uLon, z.lat, z.lon);
-                    let effectiveRadius = z.isOffice ? 1500 : z.rayon;
+                    // Toujours le rayon configuré du lieu, jamais une valeur forcée :
+                    // miroir exact de la correction backend (routes/mobile.js).
+                    const effectiveRadius = (z.rayon !== null && z.rayon !== undefined) ? z.rayon : 100;
                     if (d <= effectiveRadius) {
                         isInsideAuthorizedZone = true;
                         detectedZone = z.nom;
@@ -449,7 +453,7 @@ export async function handleClockInOut() {
                 }
             }
 
-            if (!isInsideAuthorizedZone && !isMobile) {
+            if (!isInsideAuthorizedZone && perimetreLieux === 'UN_LIEU') {
                 stopAllCameras();
                 return Swal.fire({ icon: 'error', title: 'Position Refusée', text: 'Même hors-ligne, vous devez être sur un site autorisé pour pointer.' });
             }
@@ -487,6 +491,10 @@ export async function handleClockInOut() {
             localStorage.removeItem('active_mission_context');
             await refreshClockButton();
             Swal.fire('Succès', `Pointage validé : ${resData.zone}`, 'success');
+
+            if (action === 'CLOCK_IN' && resData.zone === 'Zone Mobile' && perimetreLieux === 'CATALOGUE_OUVERT' && currentGps !== 'GPS_DISABLED') {
+                offerRegisterLocation(currentGps);
+            }
         } else {
             throw new Error(resData.error || "Erreur serveur");
         }
@@ -533,6 +541,10 @@ export async function fetchMobileLocations() {
     const canManage =
       AppState.currentUser.permissions?.can_manage_mobile_locations;
 
+    if (AppState.currentUser.permissions?.can_validate_locations) {
+      fetchPendingLocations();
+    }
+
     if (mode === "grid") {
       // --- VUE GRILLE ---
       container.className =
@@ -551,7 +563,7 @@ export async function fetchMobileLocations() {
                         <div class="flex items-center gap-3 mb-3">
                             <div class="w-10 h-10 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center text-lg"><i class="fa-solid fa-location-dot"></i></div>
                             <div>
-                                <h3 class="font-bold text-slate-800">${loc.name}</h3>
+                                <h3 class="font-bold text-slate-800">${loc.name}${loc.status === 'PENDING' ? ' <span class="text-[9px] font-black uppercase text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 ml-1">En attente</span>' : ''}</h3>
                                 <p class="text-[10px] font-black text-slate-400 uppercase">${loc.type_location}</p>
                             </div>
                         </div>
@@ -586,7 +598,7 @@ export async function fetchMobileLocations() {
                             <div class="flex items-center gap-3">
                                 <i class="fa-solid fa-location-dot text-blue-500 bg-blue-50 p-2 rounded-lg"></i>
                                 <div>
-                                    <div class="font-bold text-slate-800">${loc.name}</div>
+                                    <div class="font-bold text-slate-800">${loc.name}${loc.status === 'PENDING' ? ' <span class="text-[9px] font-black uppercase text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded border border-amber-200 ml-1">En attente</span>' : ''}</div>
                                     <div class="text-[9px] font-black text-slate-400 uppercase">${loc.type_location}</div>
                                 </div>
                             </div>
@@ -615,6 +627,43 @@ export async function fetchMobileLocations() {
   } catch (e) {
     console.error(e);
   }
+}
+
+export async function fetchPendingLocations() {
+  const container = document.getElementById("pending-locations-list");
+  const panel = document.getElementById("pending-locations-panel");
+  if (!container) return;
+  try {
+    const r = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/list-pending-locations`);
+    if (!r.ok) return;
+    const data = await r.json();
+    if (panel) panel.classList.toggle("hidden", data.length === 0);
+    container.innerHTML = data.map((loc) => `
+      <div class="flex items-center justify-between bg-white p-4 rounded-xl border border-amber-200">
+        <div>
+          <div class="font-bold text-sm text-slate-800">${loc.name}</div>
+          <div class="text-[10px] font-mono text-slate-400">Lat: ${loc.latitude.toFixed(4)} | Lon: ${loc.longitude.toFixed(4)} | Rayon: ${loc.radius}m</div>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="window.handleLocationValidation('${loc.id}', 'APPROVE')" class="bg-emerald-500 text-white px-3 py-2 rounded-lg text-[10px] font-bold uppercase"><i class="fa-solid fa-check mr-1"></i>Valider</button>
+          <button onclick="window.handleLocationValidation('${loc.id}', 'REJECT')" class="bg-white border border-red-200 text-red-500 px-3 py-2 rounded-lg text-[10px] font-bold uppercase"><i class="fa-solid fa-xmark mr-1"></i>Rejeter</button>
+        </div>
+      </div>`).join("");
+  } catch (e) { console.error("Erreur chargement lieux en attente:", e); }
+}
+
+export async function handleLocationValidation(id, decision) {
+  const confirmRes = await Swal.fire({
+    title: decision === "APPROVE" ? "Valider ce lieu ?" : "Rejeter ce lieu ?",
+    icon: "question", showCancelButton: true,
+  });
+  if (!confirmRes.isConfirmed) return;
+  await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/validate-mobile-location`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, decision }),
+  });
+  fetchPendingLocations();
+  fetchMobileLocations();
 }
 
 export async function openAddLocationModal() {
@@ -711,29 +760,27 @@ export function changeViewMode(section, mode) {
 export async function offerRegisterLocation(gps) {
   const { value: locName } = await Swal.fire({
     title: "Lieu non répertorié",
-    text: "Voulez-vous enregistrer ce point GPS comme un nouveau site ?",
+    text: "Voulez-vous proposer ce point GPS comme nouveau lieu ? Il sera utilisable immédiatement, mais restera signalé comme en attente jusqu'à validation par un responsable.",
     input: "text",
     inputPlaceholder: "Nom de la pharmacie / centre...",
     showCancelButton: true,
-    confirmButtonText: "Enregistrer le site",
+    confirmButtonText: "Proposer ce lieu",
   });
 
   if (locName) {
     const [lat, lon] = gps.split(",");
-    await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/add-mobile-location`, {
+    await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/propose-mobile-location`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         name: locName,
         latitude: lat,
         longitude: lon,
-        radius: 50,
-        type_location: "AUTO_GEOLOC",
       }),
     });
     Swal.fire(
-      "Succès",
-      "Le lieu a été ajouté à la base de données.",
+      "Lieu proposé",
+      "Ce lieu est utilisable dès maintenant et sera vérifié par un responsable.",
       "success",
     );
   }
@@ -1758,7 +1805,7 @@ export async function fetchMobileReports(page = 1) {
                                 <div>
                                     <div class="text-sm font-black text-slate-800 uppercase tracking-tighter">${v.contact_nom}</div>
                                     <div class="text-[9px] text-blue-600 font-bold uppercase tracking-widest mb-1">${v.contact_role}</div>
-                                    <div class="text-[10px] text-slate-500 font-medium"><i class="fa-solid fa-location-dot mr-1 text-slate-300"></i>${v.lieu_nom}</div>
+                                    <div class="text-[10px] text-slate-500 font-medium"><i class="fa-solid fa-location-dot mr-1 text-slate-300"></i>${v.lieu_nom}${v.location_pending ? ' <span class="text-amber-700 font-black uppercase">· En attente</span>' : ''}</div>
                                 </div>
                             </div>
                         </td>
