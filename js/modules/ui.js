@@ -70,10 +70,7 @@ export async function refreshAllData(force = false) {
     }
 
     // 7. GESTION MANAGERIALE (Validation des congés)
-    if (
-      AppState.currentUser.role !== "EMPLOYEE" &&
-      !perms.can_see_employees
-    ) {
+    if (perms.can_see_employees) {
       tasks.push(window.fetchLeaveRequests());
     }
 
@@ -222,7 +219,7 @@ export function switchView(v) {
   // Logique de recherche et accounting
   const searchContainer = document.getElementById("global-search-container");
   if (v === "AppState.employees" || v === "logs") {
-    if (AppState.currentUser && AppState.currentUser.role !== "EMPLOYEE") {
+    if (AppState.currentUser && AppState.currentUser.permissions?.can_see_employees) {
       searchContainer.style.visibility = "visible";
       searchContainer.style.opacity = "1";
     }
@@ -499,6 +496,49 @@ export function applyPermissionsUI(perms) {
         group.remove(); // Le groupe est totalement vide, ON LE DÉTRUIT AUSSI !
       }
     }
+  });
+}
+
+// ============================================================
+// RAFRAÎCHISSEMENT PÉRIODIQUE DES PERMISSIONS EFFECTIVES
+// ------------------------------------------------------------
+// Les permissions de rôle sont embarquées dans le JWT à la connexion et ne
+// changent qu'à la prochaine reconnexion. Les dérogations personnalisées
+// (permission_overrides) doivent en revanche s'appliquer sans attendre —
+// ce sondage périodique met à jour AppState.currentUser.permissions et
+// réapplique applyPermissionsUI en conséquence.
+//
+// Limite connue et acceptée (UX, pas de sécurité — le backend est la
+// source de vérité sur chaque appel API) : applyPermissionsUI() détruit du
+// DOM (el.remove()) les éléments [data-perm] non autorisés. Un élément déjà
+// détruit ne peut pas être recréé par ce sondage : un octroi devient
+// visible immédiatement pour les vérifications JS (can_xxx dans le code),
+// mais un bouton/menu déjà supprimé au chargement ne réapparaît qu'à la
+// prochaine connexion. Un retrait, en revanche, s'applique correctement
+// dans les deux cas.
+// ============================================================
+let permissionsPollingStarted = false;
+
+export function startEffectivePermissionsPolling() {
+  if (permissionsPollingStarted) return;
+  permissionsPollingStarted = true;
+
+  const poll = async () => {
+    if (!AppState.currentUser?.id) return;
+    try {
+      const r = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/read-effective-permissions`);
+      if (!r.ok) return;
+      const effective = await r.json();
+      AppState.currentUser.permissions = effective;
+      window.applyPermissionsUI(effective);
+    } catch (e) {
+      console.warn("Sondage des permissions effectives échoué :", e);
+    }
+  };
+
+  setInterval(poll, 5 * 60 * 1000); // aligné sur la granularité du cron d'expiration
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") poll();
   });
 }
 

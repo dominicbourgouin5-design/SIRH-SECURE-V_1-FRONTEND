@@ -317,6 +317,7 @@ try {
     await window.applyModulesUI();
     window.applyPermissionsUI(perms);
     window.applyDynamicLabels();
+    window.startEffectivePermissionsPolling();
     await window.refreshClockButton();
 
     // 4. NAVIGATION PRÉEMPTIVE (On choisit la vue SOUS le loader)

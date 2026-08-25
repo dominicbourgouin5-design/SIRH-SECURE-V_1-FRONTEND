@@ -50,7 +50,7 @@ export async function fetchData(forceUpdate = false, page = 1) {
     `&role=${filters.role || "all"}` +
     `&agent=${encodeURIComponent(AppState.currentUser.nom)}`;
 
-  if (AppState.currentUser.role === "EMPLOYEE") {
+  if (!AppState.currentUser.permissions?.can_see_employees) {
     fetchUrl += `&target_id=${encodeURIComponent(AppState.currentUser.id)}`;
   }
 
@@ -137,7 +137,7 @@ export async function fetchData(forceUpdate = false, page = 1) {
     }
 
     window.renderCharts();
-    if (AppState.currentUser.role !== "EMPLOYEE") {
+    if (AppState.currentUser.permissions?.can_see_employees) {
       window.fetchLeaveRequests();
     }
     
@@ -1602,6 +1602,203 @@ export async function openEditModal(id) {
 
 export function closeEditModal() {
   document.getElementById("edit-modal").classList.add("hidden");
+}
+
+// ============================================================
+// ACCÈS PERSONNALISÉS (dérogations de permission par employé)
+// ------------------------------------------------------------
+// État de travail de la modale : les permissions du rôle (avec leur statut
+// "verrouillée"), les dérogations déjà actives, et les changements pas
+// encore enregistrés (une case cochée/décochée différente du défaut du
+// rôle). `changes` n'est envoyé au serveur qu'au clic sur "Enregistrer".
+// ============================================================
+let permModalState = { employeeId: null, employeeName: "", rolePermissions: {}, overrides: [], changes: {} };
+
+function humanizePermission(key) {
+  return key.replace(/^can_/, "").replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
+}
+
+export async function openPermissionsModal(employeeId, employeeRole) {
+  const employeeName = AppState.currentEditingOriginal?.nom || `Employé #${employeeId}`;
+  permModalState = { employeeId, employeeName, rolePermissions: {}, overrides: [], changes: {} };
+
+  document.getElementById("permissions-modal-employee-name").innerText = `${employeeName} — rôle ${employeeRole}`;
+  document.getElementById("permissions-modal").classList.remove("hidden");
+  document.getElementById("permissions-checklist").innerHTML =
+    '<div class="text-center text-slate-400 py-6"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+
+  await refreshPermissionsModal(employeeRole);
+}
+
+async function refreshPermissionsModal(employeeRole) {
+  const role = employeeRole || permModalState.employeeRole;
+  permModalState.employeeRole = role;
+
+  try {
+    const [roleRes, overridesRes] = await Promise.all([
+      secureFetch(`${SIRH_CONFIG.apiBaseUrl}/read-role-permissions?role=${encodeURIComponent(role)}`),
+      secureFetch(`${SIRH_CONFIG.apiBaseUrl}/read-permission-overrides?employee_id=${permModalState.employeeId}`),
+    ]);
+
+    if (!roleRes.ok) throw new Error("Impossible de lire les permissions du rôle.");
+    const roleData = await roleRes.json();
+    permModalState.rolePermissions = roleData.permissions || {};
+    permModalState.overrides = overridesRes.ok ? await overridesRes.json() : [];
+    permModalState.changes = {};
+
+    renderPermissionsOverridesList();
+    renderPermissionsChecklist();
+  } catch (e) {
+    console.error("Erreur chargement accès personnalisés:", e);
+    document.getElementById("permissions-checklist").innerHTML =
+      '<div class="text-center text-red-400 py-6 text-xs">Erreur de chargement.</div>';
+  }
+}
+
+function renderPermissionsOverridesList() {
+  const section = document.getElementById("permissions-overrides-section");
+  const list = document.getElementById("permissions-overrides-list");
+  if (permModalState.overrides.length === 0) {
+    section.classList.add("hidden");
+    return;
+  }
+  section.classList.remove("hidden");
+  list.innerHTML = permModalState.overrides.map((ov) => `
+    <div class="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-xl p-3">
+      <div class="text-xs">
+        <span class="font-bold text-slate-800">${humanizePermission(ov.permission_name)}</span>
+        <span class="ml-2 text-[9px] font-black uppercase ${ov.mode === "ADD" ? "text-emerald-700" : "text-red-600"}">${ov.mode === "ADD" ? "Ajouté" : "Retiré"}</span>
+        <div class="text-slate-400 text-[10px] mt-0.5">${ov.expires_at ? `Expire le ${new Date(ov.expires_at).toLocaleString("fr-FR")}` : "Permanent"}</div>
+      </div>
+      <div class="flex gap-1">
+        ${ov.expires_at ? `<button onclick="window.extendPermissionOverride('${ov.id}')" title="Prolonger" class="p-2 bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-blue-600"><i class="fa-solid fa-clock-rotate-left"></i></button>
+        <button onclick="window.convertPermissionOverrideToPermanent('${ov.id}')" title="Rendre permanent" class="p-2 bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-emerald-600"><i class="fa-solid fa-infinity"></i></button>` : ""}
+        <button onclick="window.revokePermissionOverride('${ov.id}')" title="Révoquer" class="p-2 bg-white border border-slate-200 rounded-lg text-slate-500 hover:text-red-600"><i class="fa-solid fa-ban"></i></button>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderPermissionsChecklist() {
+  const container = document.getElementById("permissions-checklist");
+  const keys = Object.keys(permModalState.rolePermissions).sort();
+
+  container.innerHTML = keys.map((key) => {
+    const perm = permModalState.rolePermissions[key];
+    const override = permModalState.overrides.find((o) => o.permission_name === key);
+    const effectiveChecked = override ? override.mode === "ADD" : perm.default;
+    const rowId = `perm-row-${key}`;
+
+    if (perm.locked) {
+      return `
+        <div class="flex items-center gap-3 py-2 border-b border-slate-50 opacity-50" title="Liée au rôle, non modifiable">
+          <input type="checkbox" disabled ${perm.default ? "checked" : ""} class="w-4 h-4 rounded">
+          <span class="text-xs font-medium text-slate-500 flex-1">${humanizePermission(key)}</span>
+          <i class="fa-solid fa-lock text-[10px] text-slate-300"></i>
+        </div>`;
+    }
+
+    return `
+      <div id="${rowId}" class="flex items-center gap-3 py-2 border-b border-slate-50">
+        <input type="checkbox" ${effectiveChecked ? "checked" : ""}
+          onchange="window.onPermissionCheckboxChange('${key}', this.checked)"
+          class="w-4 h-4 rounded border-slate-300 text-blue-600">
+        <span class="text-xs font-medium text-slate-700 flex-1">${humanizePermission(key)}</span>
+        <input type="datetime-local" id="perm-expiry-${key}" title="Expire le (vide = permanent)"
+          class="text-[10px] border border-slate-200 rounded-lg px-2 py-1 w-36">
+      </div>`;
+  }).join("");
+}
+
+export function onPermissionCheckboxChange(permKey, checked) {
+  const def = permModalState.rolePermissions[permKey]?.default;
+  if (checked === def) {
+    delete permModalState.changes[permKey];
+  } else {
+    permModalState.changes[permKey] = { mode: checked ? "ADD" : "REMOVE" };
+  }
+}
+
+export async function savePermissionOverrides() {
+  const keys = Object.keys(permModalState.changes);
+  if (keys.length === 0) {
+    return Swal.fire("Info", "Aucun changement à enregistrer.", "info");
+  }
+
+  Swal.fire({ title: "Enregistrement...", didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+
+  try {
+    for (const permKey of keys) {
+      const change = permModalState.changes[permKey];
+      const expiryInput = document.getElementById(`perm-expiry-${permKey}`);
+      const expires_at = expiryInput?.value ? new Date(expiryInput.value).toISOString() : null;
+
+      const response = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/grant-permission-override`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employee_id: permModalState.employeeId,
+          permission_name: permKey,
+          mode: change.mode,
+          expires_at,
+        }),
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || `Échec sur ${permKey}`);
+      }
+    }
+
+    await refreshPermissionsModal();
+    Swal.fire("Succès", "Accès mis à jour.", "success");
+  } catch (e) {
+    Swal.fire("Erreur", e.message, "error");
+  }
+}
+
+export async function extendPermissionOverride(id) {
+  const { value: newDate } = await Swal.fire({
+    title: "Prolonger jusqu'à quand ?",
+    input: "datetime-local",
+    showCancelButton: true,
+    confirmButtonText: "Prolonger",
+  });
+  if (!newDate) return;
+
+  await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/extend-permission-override`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, new_expires_at: new Date(newDate).toISOString() }),
+  });
+  await refreshPermissionsModal();
+}
+
+export async function convertPermissionOverrideToPermanent(id) {
+  const confirmRes = await Swal.fire({ title: "Rendre cet accès permanent ?", icon: "question", showCancelButton: true });
+  if (!confirmRes.isConfirmed) return;
+
+  await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/convert-permission-override`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  await refreshPermissionsModal();
+}
+
+export async function revokePermissionOverride(id) {
+  const confirmRes = await Swal.fire({ title: "Révoquer cet accès ?", icon: "warning", showCancelButton: true, confirmButtonColor: "#dc2626" });
+  if (!confirmRes.isConfirmed) return;
+
+  await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/revoke-permission-override`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  await refreshPermissionsModal();
+}
+
+export function closePermissionsModal() {
+  document.getElementById("permissions-modal").classList.add("hidden");
 }
 
 export async function submitUpdate(e) {

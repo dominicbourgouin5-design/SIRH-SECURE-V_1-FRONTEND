@@ -7,7 +7,7 @@ let mapAgentsRegistry = []; // Pour stocker les données des agents présents su
 
 export async function updateManagementSignals() {
   const container = document.getElementById("signals-container");
-  if (!container || !AppState.currentUser || AppState.currentUser.role === "EMPLOYEE") return;
+  if (!container || !AppState.currentUser || !AppState.currentUser.permissions?.can_see_dashboard) return;
   let signals = [];
 
   try {

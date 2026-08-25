@@ -998,7 +998,7 @@ export async function openAddScheduleModal() {
     ];
 
     // Si je suis chef, je charge aussi la liste des employés pour leur assigner des tâches
-    const isManager = AppState.currentUser.role !== "EMPLOYEE";
+    const isManager = !!AppState.currentUser.permissions?.can_see_employees;
     if (isManager) {
       promises.push(
         secureFetch(`${SIRH_CONFIG.apiBaseUrl}/read?limit=1000&status=Actif`),
@@ -1676,7 +1676,7 @@ export async function fetchMobileReports(page = 1) {
 
     if (!container) return;
     
-    const isChef = AppState.currentUser.role !== 'EMPLOYEE';
+    const isChef = !!AppState.currentUser.permissions?.can_see_employees;
     const L = AppState.labels || {}; // RÉCUPÉRATION DU DICTIONNAIRE
     
     // Fallback de sécurité si le dictionnaire n'est pas chargé
@@ -2307,10 +2307,7 @@ export async function renderPerformanceTable() {
   const body = document.getElementById("performance-table-body");
   if (!body) return;
 
-  if (
-    AppState.currentUser.role === "EMPLOYEE" ||
-    !AppState.currentUser.permissions.can_see_employees
-  ) {
+  if (!AppState.currentUser.permissions.can_see_employees) {
     return; // On arrête silencieusement, pas d'erreur serveur.
   }
 

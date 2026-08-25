@@ -140,7 +140,7 @@ export async function fetchLeaveRequests() {
     // ============================================================
     // PARTIE 1 : TABLEAU DE VALIDATION (POUR MANAGER / ADMIN / RH)
     // ============================================================
-    if (AppState.currentUser.role !== "EMPLOYEE" && body) {
+    if (AppState.currentUser.permissions?.can_see_employees && body) {
       // 💡 On filtre de manière très large pour "attente" (majuscule, minuscule, espace...)
       const pending = AppState.allLeaves.filter(
         (l) => l.statut.includes("attente") || l.statutOriginal.toLowerCase().includes("attente")
