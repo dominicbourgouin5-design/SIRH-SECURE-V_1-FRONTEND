@@ -15,6 +15,7 @@ import * as Chat from "./modules/chat.js";
 import * as Admin from "./modules/admin.js";
 import * as Utils from "./core/utils.js"; 
 import * as CRM from "./modules/crm.js";
+import * as PayTpl from "./modules/paymentTemplates.js";
 
 
 // ==============================================================
@@ -72,6 +73,15 @@ window.moveStep = HR.moveStep;
 window.openEditModal = HR.openEditModal;
 window.closeEditModal = HR.closeEditModal;
 window.submitUpdate = HR.submitUpdate;
+// --- Gabarits de paiement (comptable) ---
+window.fetchPaymentTemplates = PayTpl.fetchPaymentTemplates;
+window.openTemplateEditor = PayTpl.openTemplateEditor;
+window.deletePaymentTemplate = PayTpl.deletePaymentTemplate;
+window.ajouterColonne = PayTpl.ajouterColonne;
+window.majColonne = PayTpl.majColonne;
+window.deplacerColonne = PayTpl.deplacerColonne;
+window.supprimerColonne = PayTpl.supprimerColonne;
+
 window.openPermissionsModal = HR.openPermissionsModal;
 window.closePermissionsModal = HR.closePermissionsModal;
 window.onPermissionCheckboxChange = HR.onPermissionCheckboxChange;

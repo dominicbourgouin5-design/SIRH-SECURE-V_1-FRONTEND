@@ -308,9 +308,15 @@
             <span class="font-semibold text-emerald-400 group-hover:text-white">Paie & Comptabilité</span>
         </button>
         
+        <!-- Serrure : Gabarits de paiement (comptable) -->
+        <button data-perm="can_manage_payment_templates" onclick="switchView('payment-templates')" class="nav-btn w-full flex items-center gap-4 p-4 rounded-xl transition-all hover:text-white group">
+            <i class="fa-solid fa-table-columns w-5 text-emerald-500"></i>
+            <span class="font-semibold text-emerald-400 group-hover:text-white">Gabarits de Paiement</span>
+        </button>
+
         <!-- Serrure : Paramètres -->
         <button data-perm="can_manage_config" onclick="switchView('settings')" class="nav-btn w-full flex items-center gap-4 p-4 rounded-xl transition-all hover:text-white group">
-            <i class="fa-solid fa-gears w-5 text-slate-400"></i> 
+            <i class="fa-solid fa-gears w-5 text-slate-400"></i>
             <span class="font-semibold text-slate-400 group-hover:text-white">Paramètres Sièges</span>
         </button>
 
@@ -1641,6 +1647,35 @@
                 </tbody>
             </table>
         </div>
+    </div>
+</section>
+
+<!-- GABARITS DE PAIEMENT — le comptable définit lui-même les colonnes des
+     fichiers d'export et d'import, parce qu'elles changent d'un opérateur à
+     l'autre et d'une entreprise à l'autre. -->
+<section id="view-payment-templates" class="view-section">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
+        <div>
+            <h2 class="text-2xl font-black text-slate-800 tracking-tight">Gabarits de paiement</h2>
+            <p class="text-sm text-slate-500 font-bold uppercase tracking-widest">Colonnes des fichiers envoyés à la banque et aux opérateurs</p>
+        </div>
+        <button data-perm="can_manage_payment_templates" onclick="window.openTemplateEditor()" class="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold shadow-lg active:scale-95 transition-all flex items-center gap-2 text-xs">
+            <i class="fa-solid fa-plus"></i> Nouveau gabarit
+        </button>
+    </div>
+
+    <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5 mb-6 text-xs text-amber-900">
+        <p class="font-black uppercase tracking-widest text-[10px] mb-2"><i class="fa-solid fa-circle-info mr-1"></i> À quoi sert un gabarit</p>
+        <p class="leading-relaxed">
+            Chaque banque et chaque opérateur mobile money attend son propre format de fichier.
+            Un gabarit décrit <strong>quelles colonnes produire, dans quel ordre</strong> pour l'export,
+            et <strong>où lire le résultat</strong> dans le fichier de retour après paiement.
+            Utilisez l'aperçu pour vérifier le rendu avant de vous en servir.
+        </p>
+    </div>
+
+    <div id="payment-templates-list" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="col-span-full text-center py-10 text-slate-400 italic">Chargement des gabarits...</div>
     </div>
 </section>
 

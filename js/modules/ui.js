@@ -280,7 +280,7 @@ export function switchView(v) {
   if (v === "mobile-locations") window.fetchMobileLocations();
   if (v === "mobile-planning") window.fetchMobileSchedules();
   if (v === "contract-templates") window.fetchTemplates();
-  if (v === "mobile-planning") window.fetchMobileSchedules();
+  if (v === "payment-templates") window.fetchPaymentTemplates();
 
   // Correction spécifique pour les rapports opérationnels
   if (v === "mobile-reports") {
