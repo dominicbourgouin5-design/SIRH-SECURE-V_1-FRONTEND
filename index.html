@@ -795,6 +795,14 @@
                         <input type="number" id="f-indemnite-logement" class="w-full p-3 bg-white border border-green-200 rounded-xl text-sm outline-none" placeholder="Logement">
                     </div>
                 </div>
+
+                <!-- COORDONNÉES DE PAIEMENT — le mode se décide ici, employé
+                     par employé, et se propage ensuite jusqu'au fichier
+                     envoyé à la banque ou à l'opérateur. -->
+                <div id="f-payment-block" class="bg-blue-50/40 p-6 rounded-[2rem] border-2 border-dashed border-blue-200 space-y-4">
+                    <p class="text-[10px] font-black text-blue-700 uppercase tracking-[0.2em]">Comment ce salarié est-il payé ?</p>
+                    <!-- Rempli par window.renderPaymentFields('f') -->
+                </div>
             </div>
 
             <!-- ÉTAPE 3 : DOCUMENTS & MANAGEMENT -->
@@ -2146,6 +2154,14 @@
                         </select>
                     </div>
                 </div>
+            </div>
+
+            <!-- COORDONNÉES DE PAIEMENT -->
+            <div id="edit-payment-block" data-perm="can_see_payment_details" class="p-6 bg-blue-50/40 rounded-[2rem] border border-blue-100 space-y-4">
+                <p class="text-[10px] font-black text-blue-700 uppercase tracking-widest flex items-center gap-2">
+                    <i class="fa-solid fa-money-bill-transfer"></i> Comment ce salarié est-il payé ?
+                </p>
+                <!-- Rempli par window.renderPaymentFields('edit') -->
             </div>
 
             <!-- ACCÈS PERSONNALISÉS (dérogations individuelles au rôle) -->

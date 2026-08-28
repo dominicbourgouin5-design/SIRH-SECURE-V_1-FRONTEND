@@ -76,6 +76,17 @@ export async function fetchData(forceUpdate = false, page = 1) {
         perimetre_lieux: x.perimetre_lieux || "UN_LIEU",
         contenu_pointage: x.contenu_pointage || "MINIMAL",
         rythme: x.rythme || "STANDARD",
+        // Coordonnées de paiement (absentes si l'utilisateur n'a pas
+        // can_see_payment_details : le backend ne les renvoie alors pas)
+        mode_paiement_defaut: x.mode_paiement_defaut || "ESPECES",
+        iban: x.iban || "",
+        banque_nom: x.banque_nom || "",
+        banque_code: x.banque_code || "",
+        banque_guichet: x.banque_guichet || "",
+        bic: x.bic || "",
+        momo_numero: x.momo_numero || "",
+        momo_operateur: x.momo_operateur || "",
+        titulaire_compte: x.titulaire_compte || "",
         poste: x.poste,
         dept: x.departement || "Non défini",
         Solde_Conges: parseFloat(x.solde_conges) || 0,
@@ -1213,6 +1224,20 @@ export async function handleOnboarding(e) {
     fd.append("perimetre_lieux", getVal("f-perimetre-lieux"));
     fd.append("contenu_pointage", getVal("f-contenu-pointage"));
     fd.append("rythme", getVal("f-rythme"));
+
+    // Coordonnées de paiement. Les champs sans rapport avec le mode choisi
+    // partent explicitement vides : changer d'avis en cours de saisie ne
+    // doit pas laisser un IBAN sur un salarié payé en espèces.
+    if (window.collectPaymentFields) {
+      const paiement = window.collectPaymentFields("f");
+      if (paiement.erreurs.length > 0) {
+        Swal.fire("Coordonnées de paiement", paiement.erreurs.join("\n"), "warning");
+        return;
+      }
+      Object.entries(paiement.valeurs).forEach(([cle, val]) => {
+        fd.append(cle, val === null ? "" : val);
+      });
+    }
     fd.append("limit", getVal("f-limit")); // type_contrat
     fd.append("role", getVal("f-role"));
 
@@ -1541,6 +1566,13 @@ export async function openEditModal(id) {
     document.getElementById("edit-rythme").value = e.rythme || "STANDARD";
     document.getElementById("edit-statut").value = e.statut || "Actif";
 
+    // Coordonnées de paiement : les champs affichés dépendent du mode.
+    // Le gel vient du serveur — un lot de règlement ouvert pour ce salarié
+    // interdit de modifier ses coordonnées jusqu'à la clôture.
+    if (window.renderPaymentFields) {
+      window.renderPaymentFields("edit", e, { gele: !!e.coordonnees_gelees });
+    }
+
     // 3. RÔLE (FORÇAGE ET SÉCURITÉ)
     if (roleSelect) {
       // On récupère la valeur propre
@@ -1843,6 +1875,24 @@ export async function submitUpdate(e) {
     changes.contenu_pointage = newVal.contenu_pointage;
   if (newVal.rythme !== AppState.currentEditingOriginal.rythme)
     changes.rythme = newVal.rythme;
+
+  // Coordonnées de paiement, en delta comme le reste. Le bloc est absent si
+  // l'utilisateur n'a pas can_see_payment_details : dans ce cas on ne touche
+  // à rien plutôt que d'effacer des coordonnées qu'on n'avait pas le droit
+  // de voir.
+  if (document.getElementById("edit-mode_paiement_defaut") && window.collectPaymentFields) {
+    const paiement = window.collectPaymentFields("edit");
+    if (paiement.erreurs.length > 0) {
+      Swal.fire("Coordonnées de paiement", paiement.erreurs.join("\n"), "warning");
+      return;
+    }
+    const orig = AppState.currentEditingOriginal;
+    Object.entries(paiement.valeurs).forEach(([cle, val]) => {
+      const avant = orig[cle] || null;
+      const apres = val || null;
+      if (avant !== apres) changes[cle] = apres === null ? "" : apres;
+    });
+  }
 
   // Comparaison du manager (attention au type null/string)
   if (newVal.manager_id != AppState.currentEditingOriginal.manager_id) {

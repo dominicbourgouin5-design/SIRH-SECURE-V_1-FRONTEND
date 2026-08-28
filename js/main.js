@@ -16,6 +16,7 @@ import * as Admin from "./modules/admin.js";
 import * as Utils from "./core/utils.js"; 
 import * as CRM from "./modules/crm.js";
 import * as PayTpl from "./modules/paymentTemplates.js";
+import * as PayFields from "./modules/paymentFields.js";
 
 
 // ==============================================================
@@ -73,6 +74,17 @@ window.moveStep = HR.moveStep;
 window.openEditModal = HR.openEditModal;
 window.closeEditModal = HR.closeEditModal;
 window.submitUpdate = HR.submitUpdate;
+// --- Champs de coordonnées de paiement (fiche employé) ---
+window.renderPaymentFields = PayFields.renderPaymentFields;
+window.onPaymentModeChange = PayFields.onPaymentModeChange;
+window.onMomoInput = PayFields.onMomoInput;
+window.onMomoBlur = PayFields.onMomoBlur;
+window.onIbanInput = PayFields.onIbanInput;
+window.onIbanBlur = PayFields.onIbanBlur;
+window.onTitulaireSelfChange = PayFields.onTitulaireSelfChange;
+window.collectPaymentFields = PayFields.collectPaymentFields;
+window.coordonneesIncompletes = PayFields.coordonneesIncompletes;
+
 // --- Gabarits de paiement (comptable) ---
 window.fetchPaymentTemplates = PayTpl.fetchPaymentTemplates;
 window.openTemplateEditor = PayTpl.openTemplateEditor;

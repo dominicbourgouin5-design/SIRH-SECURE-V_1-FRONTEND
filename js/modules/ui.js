@@ -264,6 +264,9 @@ export function switchView(v) {
     if (form) form.reset();
     window.resetCamera();
     window.populateManagerSelects();
+    // Reconstruit le bloc de coordonnées à neuf : un form.reset() ne suffit
+    // pas, les champs dépendent du mode et sont générés en JS.
+    if (window.renderPaymentFields) window.renderPaymentFields("f", {});
   }
 
   if (v === "chat") {
