@@ -534,3 +534,114 @@ export function supprimerColonne(index) {
   editeur.export_config.colonnes.splice(index, 1);
   rafraichirColonnes();
 }
+
+// ============================================================
+// COORDONNÉES DE PAIEMENT — schéma pré-rempli + import de masse (E3)
+// ============================================================
+
+// Télécharge un CSV pré-rempli de tous les employés actifs avec leur
+// mode de paiement et leurs coordonnées actuelles. Le comptable complète
+// les cases manquantes et réimporte via importPaymentCoordinates.
+export async function exportPaymentCoordinatesTemplate() {
+  try {
+    const res = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/export-payment-coordinates-template`, {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      Swal.fire("Erreur", err.error || "Impossible de générer le fichier.", "error");
+      return;
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+    a.download = `coordonnees_paiement_${date}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error("exportPaymentCoordinatesTemplate:", e);
+    Swal.fire("Erreur", "Erreur réseau lors de l'export.", "error");
+  }
+}
+
+// Déclenche le sélecteur de fichier pour l'import de masse.
+export function triggerImportPaymentCoordinates() {
+  const input = document.getElementById("input-import-payment-coordinates");
+  if (input) input.click();
+}
+
+// Appelé quand l'utilisateur choisit un fichier CSV de coordonnées.
+export async function handleImportPaymentCoordinates(event) {
+  const file = event?.target?.files?.[0];
+  if (!file) return;
+
+  try {
+    const lignes = await new Promise((resolve, reject) => {
+      window.Papa.parse(file, {
+        header: true,
+        delimiter: ";",
+        skipEmptyLines: true,
+        transformHeader: (h) => h.trim().toLowerCase(),
+        complete: (r) => resolve(r.data),
+        error: (e) => reject(e),
+      });
+    });
+
+    if (!lignes || lignes.length === 0) {
+      Swal.fire("Fichier vide", "Aucune ligne de données trouvée.", "warning");
+      return;
+    }
+
+    // Normaliser les clés vers ce qu'attend le backend
+    const lignesNormalisees = lignes.map((row) => ({
+      id_employe:      row.id_employe      || row["id_employe"]      || "",
+      mode_paiement:   row.mode_paiement   || row["mode_paiement"]   || "",
+      banque_nom:      row.banque_nom      || row["banque_nom"]      || "",
+      banque_code:     row.banque_code     || row["banque_code"]     || "",
+      banque_guichet:  row.banque_guichet  || row["banque_guichet"]  || "",
+      iban:            row.iban            || row["iban"]            || "",
+      bic:             row.bic             || row["bic"]             || "",
+      momo_numero:     row.momo_numero     || row["momo_numero"]     || "",
+      momo_operateur:  row.momo_operateur  || row["momo_operateur"]  || "",
+      titulaire_compte:row.titulaire_compte|| row["titulaire_compte"]|| "",
+    }));
+
+    const res = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/import-payment-coordinates`, {
+      method: "POST",
+      body: JSON.stringify({ lignes: lignesNormalisees }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      Swal.fire("Erreur", data.error || "Erreur lors de l'import.", "error");
+      return;
+    }
+
+    const lignesErreur = (data.erreurs || [])
+      .map((e) => `<li>Ligne ${e.ligne} : ${escapeHTML(e.motif)}</li>`)
+      .join("");
+
+    const html = `
+      <div class="text-left text-sm space-y-2">
+        <p>${data.resume || ""}</p>
+        ${lignesErreur ? `<details class="mt-2"><summary class="cursor-pointer font-bold text-red-600">${data.erreurs.length} erreur(s) — cliquez pour détails</summary><ul class="mt-1 space-y-1 text-red-700 list-disc ml-4">${lignesErreur}</ul></details>` : ""}
+      </div>`;
+
+    Swal.fire({
+      title: "Import terminé",
+      html,
+      icon: data.erreurs?.length > 0 ? "warning" : "success",
+      confirmButtonText: "OK",
+    });
+  } catch (e) {
+    console.error("handleImportPaymentCoordinates:", e);
+    Swal.fire("Erreur", "Impossible de traiter le fichier.", "error");
+  } finally {
+    // Réinitialiser pour permettre un second import du même fichier
+    const input = document.getElementById("input-import-payment-coordinates");
+    if (input) input.value = "";
+  }
+}

@@ -93,6 +93,9 @@ window.ajouterColonne = PayTpl.ajouterColonne;
 window.majColonne = PayTpl.majColonne;
 window.deplacerColonne = PayTpl.deplacerColonne;
 window.supprimerColonne = PayTpl.supprimerColonne;
+window.exportPaymentCoordinatesTemplate = PayTpl.exportPaymentCoordinatesTemplate;
+window.triggerImportPaymentCoordinates = PayTpl.triggerImportPaymentCoordinates;
+window.handleImportPaymentCoordinates = PayTpl.handleImportPaymentCoordinates;
 
 window.openPermissionsModal = HR.openPermissionsModal;
 window.closePermissionsModal = HR.closePermissionsModal;

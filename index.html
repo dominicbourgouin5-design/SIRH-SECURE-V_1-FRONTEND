@@ -1685,6 +1685,29 @@
     <div id="payment-templates-list" class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div class="col-span-full text-center py-10 text-slate-400 italic">Chargement des gabarits...</div>
     </div>
+
+    <!-- Coordonnées de paiement — schéma pré-rempli + import de masse -->
+    <div data-perm="can_see_payment_details" class="mt-10 border-t border-slate-200 pt-8">
+        <h3 class="text-lg font-black text-slate-800 tracking-tight mb-1">Coordonnées de paiement — mise à jour de masse</h3>
+        <p class="text-xs text-slate-500 mb-5">
+            Téléchargez la liste pré-remplie de tous les salariés actifs avec leur mode de paiement et leurs coordonnées actuelles.
+            Complétez les cases manquantes dans un tableur, puis réimportez le fichier.
+            Les cellules laissées vides ne modifient pas les données existantes.
+        </p>
+        <div class="flex flex-wrap gap-3">
+            <button onclick="window.exportPaymentCoordinatesTemplate()"
+                    class="bg-emerald-600 text-white px-5 py-3 rounded-xl font-bold shadow text-xs flex items-center gap-2 active:scale-95 transition-all">
+                <i class="fa-solid fa-file-arrow-down"></i> Télécharger le schéma pré-rempli
+            </button>
+            <button onclick="window.triggerImportPaymentCoordinates()"
+                    class="bg-blue-600 text-white px-5 py-3 rounded-xl font-bold shadow text-xs flex items-center gap-2 active:scale-95 transition-all">
+                <i class="fa-solid fa-file-arrow-up"></i> Importer les coordonnées
+            </button>
+        </div>
+        <!-- Input caché pour le sélecteur de fichier -->
+        <input type="file" id="input-import-payment-coordinates" accept=".csv" class="hidden"
+               onchange="window.handleImportPaymentCoordinates(event)" />
+    </div>
 </section>
 
 <!-- DANS VUE : LIEUX & SITES -->
