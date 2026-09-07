@@ -1,3 +1,6 @@
+
+//Code complet de modules/hr.js
+
 import { AppState } from "../core/state.js";
 import {
   SIRH_CONFIG,
@@ -26,7 +29,7 @@ import {
 } from "../core/utils.js";
 
 export async function fetchData(forceUpdate = false, page = 1) {
-  console.log(`🚀 fetchData lancée. Page: ${page}, Role: ${AppState.currentUser.role}`);
+  console.log(`🚀 fetchData lancée. Page: ${page}, Role: ${AppState.currentUser?.role}`);
 
   const CACHE_KEY = "sirh_data_v1";
   const limit = 10;
@@ -43,15 +46,15 @@ export async function fetchData(forceUpdate = false, page = 1) {
   };
 
   let fetchUrl = `${URL_READ}?page=${page}&limit=${limit}` +
-    `&search=${encodeURIComponent(filters.search)}` +
-    `&status=${filters.status}` +
-    `&type=${filters.type}` +
-    `&dept=${filters.dept}` +
+    `&search=${encodeURIComponent(filters.search || "")}` +
+    `&status=${filters.status || "all"}` +
+    `&type=${filters.type || "all"}` +
+    `&dept=${filters.dept || "all"}` +
     `&role=${filters.role || "all"}` +
-    `&agent=${encodeURIComponent(AppState.currentUser.nom)}`;
+    `&agent=${encodeURIComponent(AppState.currentUser?.nom || "")}`;
 
-  if (!AppState.currentUser.permissions?.can_see_employees) {
-    fetchUrl += `&target_id=${encodeURIComponent(AppState.currentUser.id)}`;
+  if (!AppState.currentUser?.permissions?.can_see_employees) {
+    fetchUrl += `&target_id=${encodeURIComponent(AppState.currentUser?.id || "")}`;
   }
 
   try {
@@ -65,7 +68,6 @@ export async function fetchData(forceUpdate = false, page = 1) {
 
     console.log(`✅ Page ${meta.page} reçue :`, d.length, "enregistrements trouvés");
 
-    // Mapping des données (garde ton code existant)
     AppState.employees = d.map((x) => {
       return {
         id: x.id,
@@ -76,8 +78,6 @@ export async function fetchData(forceUpdate = false, page = 1) {
         perimetre_lieux: x.perimetre_lieux || "UN_LIEU",
         contenu_pointage: x.contenu_pointage || "MINIMAL",
         rythme: x.rythme || "STANDARD",
-        // Coordonnées de paiement (absentes si l'utilisateur n'a pas
-        // can_see_payment_details : le backend ne les renvoie alors pas)
         mode_paiement_defaut: x.mode_paiement_defaut || "ESPECES",
         iban: x.iban || "",
         banque_nom: x.banque_nom || "",
@@ -114,18 +114,15 @@ export async function fetchData(forceUpdate = false, page = 1) {
       };
     });
 
-    // 🔥 SAUVEGARDE EN CACHE LOCAL
+    // Sauvegarde en cache local
     cacheEmployeesLocally(AppState.employees);
     cacheEmployeesMeta(meta);
 
-    // Sauvegarde du cache Supabase (ancien système)
     localStorage.setItem(CACHE_KEY, JSON.stringify(AppState.employees));
     localStorage.setItem(CACHE_KEY + "_time", Date.now());
 
-    // Mise à jour du tableau
     renderData();
 
-    // Mise à jour de la pagination footer
     const paginationFooter = document.getElementById("employee-pagination-footer");
     if (paginationFooter) {
       if (meta.last_page > 1) {
@@ -147,35 +144,23 @@ export async function fetchData(forceUpdate = false, page = 1) {
       }
     }
 
-    window.renderCharts();
-    if (AppState.currentUser.permissions?.can_see_employees) {
+    if (typeof window.renderCharts === "function") window.renderCharts();
+    if (AppState.currentUser?.permissions?.can_see_employees && typeof window.fetchLeaveRequests === "function") {
       window.fetchLeaveRequests();
     }
     
   } catch (e) {
     console.error("❌ ERREUR FETCH:", e);
     
-    // 🔥 TENTATIVE DE CHARGEMENT DEPUIS LE CACHE LOCAL
     const cachedEmployees = getCachedEmployees();
     if (cachedEmployees && cachedEmployees.length > 0) {
       console.log("📡 Mode hors-ligne : utilisation du cache local");
       AppState.employees = cachedEmployees;
       renderData();
       loadMyProfile();
-      
-      const cachedMeta = getCachedEmployeesMeta();
-      if (cachedMeta && cachedMeta.last_page > 1) {
-        const paginationFooter = document.getElementById("employee-pagination-footer");
-        if (paginationFooter) {
-          paginationFooter.innerHTML = `
-            <span class="text-[10px] font-black text-orange-500 uppercase tracking-widest">⚠️ Mode hors-ligne - données en cache</span>
-          `;
-        }
-      }
       return;
     }
     
-    // Sinon, essayer le cache Supabase
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
       AppState.employees = JSON.parse(cached);
@@ -187,41 +172,28 @@ export async function fetchData(forceUpdate = false, page = 1) {
   }
 }
 
-
-
-// Remplace toute la fonction changePage par celle-ci :
 export function changePage(direction) {
-    const totalPages = Math.ceil(AppState.employees.length / ITEMS_PER_PAGE);
-    const newPage = AppState.currentPage + direction;
-    if (newPage >= 1 && newPage <= totalPages) {
-        AppState.currentPage = newPage;
-        renderData();
-    }
+  const totalPages = Math.ceil((AppState.employees?.length || 0) / ITEMS_PER_PAGE) || 1;
+  const newPage = AppState.currentPage + direction;
+  if (newPage >= 1 && newPage <= totalPages) {
+    AppState.currentPage = newPage;
+    renderData();
+  }
 }
-
-
-
-
 
 export function renderData() {
   const b = document.getElementById("full-body");
   const d = document.getElementById("dashboard-body");
   if (!b || !d) return;
 
-    if (!AppState || !AppState.employees) {
-        console.warn("AppState.employees n'est pas encore disponible");
-        return;
-    }
-  
-    // 1. Détection de la permission "Maître" (RH/ADMIN)
-    const canManage = AppState.currentUser?.permissions?.can_see_employees === true;
+  if (!AppState || !AppState.employees) {
+    console.warn("AppState.employees n'est pas encore disponible");
+    return;
+  }
 
+  const canManage = AppState.currentUser?.permissions?.can_see_employees === true;
 
-// 2. LOGIQUE ESTHÉTIQUE
-const headerAction = document.querySelector(
-  'th[data-perm="can_see_employees"]',
-);
-  
+  const headerAction = document.querySelector('th[data-perm="can_see_employees"]');
   if (headerAction) {
     headerAction.style.display = canManage ? "" : "none";
   }
@@ -233,7 +205,6 @@ const headerAction = document.querySelector(
     alertes = 0,
     actifs = 0;
 
-  // --- 1. CALCUL DES STATS (Sur le périmètre filtré par le serveur) ---
   AppState.employees.forEach((e) => {
     total++;
     const rawStatus = (e.statut || "Actif").toLowerCase().trim();
@@ -252,25 +223,23 @@ const headerAction = document.querySelector(
 
       if (isExpired || isUrgent) {
         alertes++;
-        // Dans le dashboard, on ne montre le bouton GÉRER que si on a le droit
         const manageBtn = canManage
           ? `<button class="bg-slate-900 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold" onclick="window.openEditModal('${escapeHTML(e.id)}')">GÉRER</button>`
           : "";
 
         d.innerHTML += `
-                    <tr class="bg-white border-b">
-                        <td class="p-4 text-sm font-bold text-slate-700">${escapeHTML(e.nom)}</td>
-                        <td class="p-4 text-xs text-slate-500">${escapeHTML(e.poste)}</td>
-                        <td class="p-4 ${isExpired ? "text-red-600" : "text-orange-600"} font-bold text-xs uppercase">${isExpired ? "Expiré" : dL + " j"}</td>
-                        <td class="p-4 text-right">${manageBtn}</td>
-                    </tr>`;
+          <tr class="bg-white border-b">
+              <td class="p-4 text-sm font-bold text-slate-700">${escapeHTML(e.nom)}</td>
+              <td class="p-4 text-xs text-slate-500">${escapeHTML(e.poste)}</td>
+              <td class="p-4 ${isExpired ? "text-red-600" : "text-orange-600"} font-bold text-xs uppercase">${isExpired ? "Expiré" : dL + " j"}</td>
+              <td class="p-4 text-right">${manageBtn}</td>
+          </tr>`;
       }
     }
   });
 
-  // --- 2. FILTRAGE LOCAL CORRIGÉ ---
   let filteredEmployees = AppState.employees;
-  if (AppState.currentFilter !== "all") {
+  if (AppState.currentFilter && AppState.currentFilter !== "all") {
     filteredEmployees = AppState.employees.filter((e) => {
       const search = AppState.currentFilter.toLowerCase();
       const eStatut = (e.statut || "").toLowerCase();
@@ -283,7 +252,6 @@ const headerAction = document.querySelector(
     });
   }
 
-  // --- 3. RENDU DU TABLEAU PRINCIPAL ---
   const startIndex = (AppState.currentPage - 1) * ITEMS_PER_PAGE;
   const paginatedEmployees = filteredEmployees.slice(
     startIndex,
@@ -309,49 +277,38 @@ const headerAction = document.querySelector(
     const av =
       e.photo && e.photo.length > 10
         ? `<img src="${formatGoogleLink(e.photo)}" loading="lazy" class="w-10 h-10 rounded-full object-cover bg-slate-200 border border-slate-200">`
-        : `<div class="w-10 h-10 bg-slate-100 border border-slate-200 rounded-full flex items-center justify-center text-xs font-black text-slate-500">${escapeHTML(e.nom).substring(0, 2).toUpperCase()}</div>`;
+        : `<div class="w-10 h-10 bg-slate-100 border border-slate-200 rounded-full flex items-center justify-center text-xs font-black text-slate-500">${escapeHTML(e.nom || "").substring(0, 2).toUpperCase()}</div>`;
 
-    // --- CELLULE ACTION (Supprimée du DOM si pas autorisé) ---
-    // --- DEBUT DU BLOC CORRIGÉ ---
     let actionCell = "";
-    const perms = AppState.currentUser.permissions || {}; // Sécurité pour éviter les erreurs
+    const perms = AppState.currentUser?.permissions || {};
     const safeId = escapeHTML(e.id);
 
-    // On ouvre la cellule et le conteneur de boutons
     actionCell = `<td class="px-8 py-4 text-right"><div class="flex items-center justify-end gap-2">`;
 
-    // 1. Bouton DOSSIER (📂)
     if (perms.can_view_employee_files) {
       actionCell += `<button onclick="window.openFullFolder('${safeId}')" title="Dossier" class="p-2 bg-yellow-50 text-yellow-600 rounded-lg hover:bg-yellow-500 hover:text-white transition-all"><i class="fa-solid fa-folder-open"></i></button>`;
     }
 
-    // 2. Section CONTRATS (Brouillon, Signer, Scan)
     if (perms.can_manage_contracts) {
-      const isSigned =
-        String(e.contract_status || "")
-          .toLowerCase()
-          .trim() === "signé";
-      actionCell += `<div class="h-4 w-[1px] bg-slate-200 mx-1"></div>`; // Séparateur
+      const isSigned = String(e.contract_status || "").toLowerCase().trim() === "signé";
+      actionCell += `<div class="h-4 w-[1px] bg-slate-200 mx-1"></div>`;
 
       if (!isSigned) {
         actionCell += `
-                    <button onclick="window.generateDraftContract('${safeId}')" title="Brouillon" class="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all"><i class="fa-solid fa-file-contract"></i></button>                    
-                    <button onclick="window.openContractModal('${safeId}')" title="Signer" class="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all"><i class="fa-solid fa-pen-nib"></i></button>
-                    <button onclick="window.triggerManualContractUpload('${safeId}')" title="Scan" class="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-all"><i class="fa-solid fa-file-arrow-up"></i></button>
-                `;
+          <button onclick="window.generateDraftContract('${safeId}')" title="Brouillon" class="p-2 bg-indigo-50 text-indigo-600 rounded-lg hover:bg-indigo-600 hover:text-white transition-all"><i class="fa-solid fa-file-contract"></i></button>                    
+          <button onclick="window.openContractModal('${safeId}')" title="Signer" class="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all"><i class="fa-solid fa-pen-nib"></i></button>
+          <button onclick="window.triggerManualContractUpload('${safeId}')" title="Scan" class="p-2 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-all"><i class="fa-solid fa-file-arrow-up"></i></button>
+        `;
       } else {
         actionCell += `<span class="text-[10px] font-black text-emerald-500 uppercase bg-emerald-50 px-2 py-1 rounded">Signé</span>`;
       }
     }
 
-    // 3. Bouton IMPRIMER (🖨️)
     if (perms.can_print_badges) {
-      actionCell += `<div class="h-4 w-[1px] bg-slate-200 mx-1"></div>`; // Séparateur
+      actionCell += `<div class="h-4 w-[1px] bg-slate-200 mx-1"></div>`;
       actionCell += `<button onclick="window.printBadge('${safeId}')" class="text-slate-400 hover:text-blue-600 transition-all"><i class="fa-solid fa-print"></i></button>`;
     }
 
-    // 4. Bouton ÉDITER (✏️)
-    // Accessible si on peut gérer les contrats OU simplement modifier les infos de base
     if (perms.can_edit_employee_basic || perms.can_manage_contracts) {
       actionCell += `<button onclick="window.openEditModal('${safeId}')" class="text-slate-400 hover:text-slate-800 transition-all"><i class="fa-solid fa-pen"></i></button>`;
     }
@@ -360,106 +317,86 @@ const headerAction = document.querySelector(
       actionCell += `<button onclick="window.deleteEmployee('${safeId}')" class="p-2 text-red-200 hover:text-red-600 transition-colors ml-1" title="Supprimer"><i class="fa-solid fa-trash-can"></i></button>`;
     }
 
-    // On ferme les balises
     actionCell += `</div></td>`;
-    // --- FIN DU BLOC CORRIGÉ ---
 
     b.innerHTML += `
-            <tr class="border-b hover:bg-slate-50 transition-colors">
-                <td class="p-4 flex gap-3 items-center min-w-[200px]">
-                    ${av}
-                    <div>
-                        <div class="font-bold text-sm text-slate-800 uppercase">${escapeHTML(e.nom)}</div>
-                        <div class="text-[10px] text-slate-400 font-mono">${e.matricule}</div>
-                    </div>
-                </td>
-                <td class="p-4 text-xs font-medium text-slate-500">${escapeHTML(e.poste)}</td>
-                <td class="p-4"><span class="px-3 py-1 border rounded-lg text-[10px] font-black uppercase ${bdgClass}">${escapeHTML(bdgLabel)}</span></td>
-                ${actionCell} 
-            </tr>`;
+      <tr class="border-b hover:bg-slate-50 transition-colors">
+          <td class="p-4 flex gap-3 items-center min-w-[200px]">
+              ${av}
+              <div>
+                  <div class="font-bold text-sm text-slate-800 uppercase">${escapeHTML(e.nom)}</div>
+                  <div class="text-[10px] text-slate-400 font-mono">${e.matricule}</div>
+              </div>
+          </td>
+          <td class="p-4 text-xs font-medium text-slate-500">${escapeHTML(e.poste)}</td>
+          <td class="p-4"><span class="px-3 py-1 border rounded-lg text-[10px] font-black uppercase ${bdgClass}">${escapeHTML(bdgLabel)}</span></td>
+          ${actionCell} 
+      </tr>`;
   });
 
-  // Mise à jour des compteurs UI
-  document.getElementById("stat-total").innerText = total;
-  document.getElementById("stat-alert").innerText = alertes;
-  document.getElementById("stat-active").innerText = actifs;
+  const statTotal = document.getElementById("stat-total");
+  if (statTotal) statTotal.innerText = total;
+  const statAlert = document.getElementById("stat-alert");
+  if (statAlert) statAlert.innerText = alertes;
+  const statActive = document.getElementById("stat-active");
+  if (statActive) statActive.innerText = actifs;
 
- // Pagination
-    const totalPages = Math.ceil(
-        filteredEmployees.length / ITEMS_PER_PAGE || 1
-    );
-    document.querySelectorAll(".page-info-global").forEach((el) => {
-        el.innerText = `PAGE ${AppState.currentPage} / ${totalPages || 1}`;
-    });
+  const totalPages = Math.ceil(filteredEmployees.length / ITEMS_PER_PAGE) || 1;
+  document.querySelectorAll(".page-info-global").forEach((el) => {
+    el.innerText = `PAGE ${AppState.currentPage} / ${totalPages}`;
+  });
 }
 
 export function filterTable() {
   const input = document.getElementById("search-input");
+  if (!input) return;
 
-  // On annule le compte à rebours précédent
   clearTimeout(AppState.searchTimeout);
-
-  // On lance un nouveau compte à rebours de 300ms
   AppState.searchTimeout = setTimeout(() => {
-    AppState.activeFilters.search = input.value.trim(); // On enregistre le texte
-    fetchData(true, 1); // On lance la recherche
+    if (!AppState.activeFilters) AppState.activeFilters = {};
+    AppState.activeFilters.search = input.value.trim();
+    fetchData(true, 1);
   }, 300);
 }
 
 export function setEmployeeFilter(category, value) {
-  // 1. On met à jour la mémoire
+  if (!AppState.activeFilters) AppState.activeFilters = {};
   AppState.activeFilters[category] = value;
 
-  // 2. On change les couleurs des boutons pour que Bill voit ce qu'il a choisi
-  // On cherche le groupe de boutons (ex: filter-group-status)
   const container = document.getElementById(`filter-group-${category}`);
   if (container) {
     container.querySelectorAll(".filter-chip").forEach((btn) => {
-      // Si le bouton correspond à la valeur cliquée -> Bleu
       if (btn.getAttribute("data-value") === value) {
         btn.className =
           "filter-chip px-3 py-1.5 rounded-lg text-[10px] font-black border bg-blue-600 text-white border-blue-600 shadow-md transition-all";
       } else {
-        // Sinon -> Blanc
         btn.className =
           "filter-chip px-3 py-1.5 rounded-lg text-[10px] font-bold border bg-white text-slate-600 border-slate-200 hover:border-blue-300 transition-all";
       }
     });
   }
 
-  // 3. On repart à la page 1 et on demande les données au serveur
   fetchData(true, 1);
 }
 
 export function applySmartFilter(filterType) {
   AppState.currentStatusFilter = filterType;
 
-  // Mise à jour visuelle des boutons (Active / Hover)
   document.querySelectorAll(".filter-chip").forEach((btn) => {
     const isThisOne =
       btn.innerText.toLowerCase() === filterType.toLowerCase() ||
       (filterType === "all" && btn.innerText.toLowerCase() === "tous");
 
     if (isThisOne) {
-      btn.classList.add(
-        "bg-blue-600",
-        "text-white",
-        "border-blue-600",
-        "shadow-md",
-      );
+      btn.classList.add("bg-blue-600", "text-white", "border-blue-600", "shadow-md");
       btn.classList.remove("bg-white", "text-slate-600");
     } else {
-      btn.classList.remove(
-        "bg-blue-600",
-        "text-white",
-        "border-blue-600",
-        "shadow-md",
-      );
+      btn.classList.remove("bg-blue-600", "text-white", "border-blue-600", "shadow-md");
       btn.classList.add("bg-white", "text-slate-600");
     }
   });
 
-  fetchData(true, 1); // On relance le filtre à la page 1
+  fetchData(true, 1);
 }
 
 export async function populateManagerSelects() {
@@ -468,21 +405,16 @@ export async function populateManagerSelects() {
   if (!createSelect && !editSelect) return;
 
   try {
-    // On appelle l'API avec une limite de 1000 et uniquement les actifs
-    // On ajoute un paramètre agent pour la sécurité
     const response = await secureFetch(
-      `${URL_READ}?limit=1000&status=Actif&agent=${encodeURIComponent(AppState.currentUser.nom)}`,
+      `${URL_READ}?limit=1000&status=Actif&agent=${encodeURIComponent(AppState.currentUser?.nom || "")}`,
     );
     const result = await response.json();
     const allActive = result.data || [];
 
-    // On génère le HTML des options
-    // On trie par nom pour que ce soit plus facile à trouver
     const optionsHtml = allActive
-      .sort((a, b) => a.nom.localeCompare(b.nom))
+      .sort((a, b) => (a.nom || "").localeCompare(b.nom || ""))
       .map(
-        (e) =>
-          `<option value="${e.id}">${e.nom} (${e.poste || "Sans poste"})</option>`,
+        (e) => `<option value="${e.id}">${e.nom} (${e.poste || "Sans poste"})</option>`,
       )
       .join("");
 
@@ -490,10 +422,6 @@ export async function populateManagerSelects() {
 
     if (createSelect) createSelect.innerHTML = defaultOpt + optionsHtml;
     if (editSelect) editSelect.innerHTML = defaultOpt + optionsHtml;
-
-    console.log(
-      `👥 Liste des managers mise à jour (${allActive.length} personnes)`,
-    );
   } catch (e) {
     console.error("Erreur lors du chargement de la liste des responsables", e);
   }
@@ -502,19 +430,13 @@ export async function populateManagerSelects() {
 export async function syncAllRoleSelects() {
   try {
     let roles;
-    // 1. Vérification du cache
     const cached = sessionStorage.getItem("sirh_cache_roles");
 
     if (cached) {
       roles = JSON.parse(cached);
-      console.log("✅ Rôles chargés depuis le cache (Instant)");
     } else {
-      // 2. Appel serveur
-      const response = await secureFetch(
-        `${SIRH_CONFIG.apiBaseUrl}/list-roles`,
-      );
+      const response = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/list-roles`);
       roles = await response.json();
-      // 3. Sauvegarde cache
       sessionStorage.setItem("sirh_cache_roles", JSON.stringify(roles));
     }
 
@@ -523,20 +445,14 @@ export async function syncAllRoleSelects() {
       .map((r) => `<option value="${r.role_name}">${r.role_name}</option>`)
       .join("");
 
-    // Mise à jour des formulaires
     ["f-role", "edit-role"].forEach((id) => {
       const el = document.getElementById(id);
-      if (el)
-        el.innerHTML =
-          `<option value="">-- Sélectionner un rôle --</option>` + optionsHtml;
+      if (el) el.innerHTML = `<option value="">-- Sélectionner un rôle --</option>` + optionsHtml;
     });
 
-    // Mise à jour des filtres (Correction de ton ancienne erreur d'accolade ici aussi)
     ["filter-role-select", "filter-accounting-role"].forEach((id) => {
       const el = document.getElementById(id);
-      if (el)
-        el.innerHTML =
-          `<option value="all">Tous les rôles</option>` + optionsHtml;
+      if (el) el.innerHTML = `<option value="all">Tous les rôles</option>` + optionsHtml;
     });
   } catch (e) {
     console.error("Erreur synchro rôles", e);
@@ -548,9 +464,7 @@ export async function fetchContractTemplatesForSelection() {
   if (!selectElement) return;
 
   try {
-    const response = await secureFetch(
-      `${SIRH_CONFIG.apiBaseUrl}/list-templates`,
-    );
+    const response = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/list-templates`);
     const templates = await response.json();
 
     let optionsHtml = '<option value="">-- Choisir un modèle --</option>';
@@ -567,19 +481,13 @@ export async function fetchContractTemplatesForSelection() {
 export async function fetchAndPopulateDepartments() {
   try {
     let depts;
-    // 1. On vérifie le cache du navigateur
     const cached = sessionStorage.getItem("sirh_cache_depts");
 
     if (cached) {
       depts = JSON.parse(cached);
-      console.log("✅ Départements chargés depuis le cache (Instant)");
     } else {
-      // 2. Si pas en cache, on appelle le serveur
-      const response = await secureFetch(
-        `${SIRH_CONFIG.apiBaseUrl}/list-departments`,
-      );
+      const response = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/list-departments`);
       depts = await response.json();
-      // 3. On sauvegarde pour la prochaine fois
       sessionStorage.setItem("sirh_cache_depts", JSON.stringify(depts));
     }
 
@@ -588,11 +496,8 @@ export async function fetchAndPopulateDepartments() {
       .map((d) => `<option value="${d.code}">${d.label}</option>`)
       .join("");
 
-    // Mise à jour de l'interface
     const acctDept = document.getElementById("filter-accounting-dept");
-    if (acctDept)
-      acctDept.innerHTML =
-        `<option value="all">Tous les Départements</option>` + optionsHtml;
+    if (acctDept) acctDept.innerHTML = `<option value="all">Tous les Départements</option>` + optionsHtml;
 
     ["f-dept", "edit-dept"].forEach((id) => {
       const el = document.getElementById(id);
@@ -603,22 +508,17 @@ export async function fetchAndPopulateDepartments() {
   }
 }
 
-
-
-
-
 export async function loadMyProfile() {
-  console.log("🔍 --- DÉBUT CHARGEMENT PROFIL PERSONNEL ---");
-
-  // 1. Sécurité : Vérifier que l'utilisateur est bien connecté
   if (!AppState.currentUser || !AppState.currentUser.id) {
     console.error("❌ Pas d'utilisateur connecté.");
     Swal.fire("Erreur", "Session expirée. Veuillez vous reconnecter.", "error");
     return;
   }
 
-  // --- 2. NETTOYAGE IMMÉDIAT DE L'INTERFACE (Anti-Flicker) ---
-  const resetText = (id) => { if(document.getElementById(id)) document.getElementById(id).innerText = "..."; };
+  const resetText = (id) => { 
+    const el = document.getElementById(id);
+    if (el) el.innerText = "..."; 
+  };
   ["emp-name", "emp-job", "user-stat-hours", "user-stat-primes", "leave-balance-display"].forEach(resetText);
 
   const photoEl = document.getElementById("emp-photo-real");
@@ -629,16 +529,14 @@ export async function loadMyProfile() {
     avatarEl.innerText = (AppState.currentUser.nom || "U").charAt(0).toUpperCase();
   }
   
-  if(document.getElementById("emp-start-date")) document.getElementById("emp-start-date").innerText = "--/--/----";
-  if(document.getElementById("emp-end-date")) document.getElementById("emp-end-date").innerText = "--/--/----";
+  if (document.getElementById("emp-start-date")) document.getElementById("emp-start-date").innerText = "--/--/----";
+  if (document.getElementById("emp-end-date")) document.getElementById("emp-end-date").innerText = "--/--/----";
 
-  // --- 3. APPELS ASYNCHRONES PARALLÈLES (Profil + Stats Performance) ---
   try {
     const userId = AppState.currentUser.id;
 
-    // On lance les deux requêtes en même temps pour gagner du temps au chargement
     const [profileRes, statsRes] = await Promise.all([
-      secureFetch(`${URL_READ}?target_id=${encodeURIComponent(userId)}&agent=${encodeURIComponent(AppState.currentUser.nom)}`),
+      secureFetch(`${URL_READ}?target_id=${encodeURIComponent(userId)}&agent=${encodeURIComponent(AppState.currentUser.nom || "")}`),
       secureFetch(`${SIRH_CONFIG.apiBaseUrl}/read-report?mode=PERSONAL&period=monthly&requester_id=${userId}`)
     ]);
 
@@ -651,7 +549,6 @@ export async function loadMyProfile() {
       return;
     }
 
-    // --- 4. MAPPING DES DONNÉES (Conservé tel quel) ---
     const myData = {
       id: myRawData.id,
       nom: myRawData.nom,
@@ -678,50 +575,54 @@ export async function loadMyProfile() {
       contract_status: myRawData.contract_status || "Non signé",
     };
 
-    // --- 5. REMPLISSAGE DU COCKPIT DE PERFORMANCE (NOUVEAU) ---
     if (statsData && statsData.length > 0) {
-        const currentStats = statsData[0]; 
-        if(document.getElementById('user-stat-hours')) {
-            document.getElementById('user-stat-hours').innerText = currentStats.heures || "0h 00m";
-        }
-        // Calcul d'une prime estimée (ex: 500F par jour travaillé)
-        if(document.getElementById('user-stat-primes')) {
-            const nbJours = parseInt(currentStats.jours) || 0;
-            document.getElementById('user-stat-primes').innerText = new Intl.NumberFormat('fr-FR').format(nbJours * 500);
-        }
+      const currentStats = statsData[0]; 
+      if (document.getElementById('user-stat-hours')) {
+        document.getElementById('user-stat-hours').innerText = currentStats.heures || "0h 00m";
+      }
+      if (document.getElementById('user-stat-primes')) {
+        const nbJours = parseInt(currentStats.jours) || 0;
+        document.getElementById('user-stat-primes').innerText = new Intl.NumberFormat('fr-FR').format(nbJours * 500);
+      }
     }
 
-    // Solde Congés (Remplissage du cockpit)
     const leaveBalanceEl = document.getElementById("leave-balance-display");
     if (leaveBalanceEl) {
       leaveBalanceEl.innerText = `${myData.solde_conges} jours`;
       leaveBalanceEl.className = myData.solde_conges <= 5 ? "text-3xl font-black mt-2 text-orange-600" : "text-3xl font-black mt-2 text-indigo-600";
     }
 
-    // --- 6. REMPLISSAGE DE L'IDENTITÉ ---
-    document.getElementById("emp-name").innerText = myData.nom;
-    document.getElementById("emp-job").innerText = myData.poste;
+    const empName = document.getElementById("emp-name");
+    if (empName) empName.innerText = myData.nom;
+    const empJob = document.getElementById("emp-job");
+    if (empJob) empJob.innerText = myData.poste;
 
-    if (myData.photo && myData.photo.length > 10) {
+    if (myData.photo && myData.photo.length > 10 && photoEl) {
       photoEl.src = formatGoogleLink(myData.photo);
       photoEl.classList.remove("hidden");
-      avatarEl.classList.add("hidden");
+      if (avatarEl) avatarEl.classList.add("hidden");
     }
 
     if (myData.date) {
       let sD = parseDateSmart(myData.date);
-      document.getElementById("emp-start-date").innerText = sD.toLocaleDateString("fr-FR");
+      const empStart = document.getElementById("emp-start-date");
+      if (empStart) empStart.innerText = sD.toLocaleDateString("fr-FR");
       let eD = new Date(sD);
       eD.setDate(eD.getDate() + (parseInt(myData.limit) || 365));
-      document.getElementById("emp-end-date").innerText = eD.toLocaleDateString("fr-FR");
+      const empEnd = document.getElementById("emp-end-date");
+      if (empEnd) empEnd.innerText = eD.toLocaleDateString("fr-FR");
     }
 
-    document.getElementById("emp-email").value = myData.email || "";
-    document.getElementById("emp-phone").value = myData.telephone || "";
-    document.getElementById("emp-address").value = myData.adresse || "";
-    document.getElementById("emp-dob").value = convertToInputDate(myData.date_naissance);
+    const setInputVal = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.value = val || "";
+    };
 
-    // --- 7. GESTION DES DOCUMENTS (AJOUT DES BOUTONS HISTORIQUE) ---
+    setInputVal("emp-email", myData.email);
+    setInputVal("emp-phone", myData.telephone);
+    setInputVal("emp-address", myData.adresse);
+    setInputVal("emp-dob", convertToInputDate(myData.date_naissance));
+
     const dC = document.getElementById("doc-container");
     if (dC) {
       dC.innerHTML = "";
@@ -735,39 +636,37 @@ export async function loadMyProfile() {
       ];
 
       let gridHtml = '<div class="grid grid-cols-1 md:grid-cols-4 gap-4">';
-      allDocs.forEach((doc, index) => {
+      allDocs.forEach((doc) => {
         const hasLink = doc.link && doc.link.length > 5;
         const safeLabel = doc.label.replace(/'/g, "\\'");
-        const canEdit = AppState.currentUser.role === "ADMIN" || AppState.currentUser.role === "RH";
+        const canEdit = AppState.currentUser?.role === "ADMIN" || AppState.currentUser?.role === "RH";
 
         gridHtml += `
-            <div class="flex flex-col justify-between p-4 border border-slate-100 bg-white rounded-2xl hover:shadow-md transition-all group h-full">
-                <div class="flex items-center gap-3 mb-4">
-                    <div class="bg-${doc.color}-50 text-${doc.color}-600 p-3 rounded-xl shrink-0"><i class="fa-solid ${doc.icon} text-lg"></i></div>
-                    <div class="overflow-hidden">
-                        <p class="text-xs font-bold text-slate-700 truncate">${doc.label}</p>
-                        <p class="text-[9px] text-slate-400 font-bold uppercase tracking-wide">Document</p>
-                    </div>
-                </div>
-                <div class="flex gap-2 mt-auto">
-                    ${hasLink ? `<button onclick="viewDocumentHistory('${myData.id}', '${doc.key}', '${safeLabel}')" class="p-2 text-indigo-400 hover:bg-indigo-50 rounded-lg" title="Historique"><i class="fa-solid fa-clock-rotate-left"></i></button>` : ""}
-                    ${hasLink ? `<button onclick="viewDocument('${doc.link}', '${safeLabel}')" class="flex-1 py-2 text-[10px] font-bold uppercase bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all">Voir</button>` : `<div class="flex-1 py-2 text-[10px] font-bold uppercase bg-slate-50 text-slate-300 rounded-lg text-center cursor-not-allowed">Vide</div>`}
-                    ${canEdit ? `<button onclick="updateSingleDoc('${doc.key}', '${myData.id}')" class="w-10 flex items-center justify-center bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-800 hover:text-white transition-all"><i class="fa-solid fa-pen"></i></button>` : ""}
-                </div>
-            </div>`;
+          <div class="flex flex-col justify-between p-4 border border-slate-100 bg-white rounded-2xl hover:shadow-md transition-all group h-full">
+              <div class="flex items-center gap-3 mb-4">
+                  <div class="bg-${doc.color}-50 text-${doc.color}-600 p-3 rounded-xl shrink-0"><i class="fa-solid ${doc.icon} text-lg"></i></div>
+                  <div class="overflow-hidden">
+                      <p class="text-xs font-bold text-slate-700 truncate">${doc.label}</p>
+                      <p class="text-[9px] text-slate-400 font-bold uppercase tracking-wide">Document</p>
+                  </div>
+              </div>
+              <div class="flex gap-2 mt-auto">
+                  ${hasLink ? `<button onclick="viewDocumentHistory('${myData.id}', '${doc.key}', '${safeLabel}')" class="p-2 text-indigo-400 hover:bg-indigo-50 rounded-lg" title="Historique"><i class="fa-solid fa-clock-rotate-left"></i></button>` : ""}
+                  ${hasLink ? `<button onclick="window.viewDocument('${doc.link}', '${safeLabel}')" class="flex-1 py-2 text-[10px] font-bold uppercase bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-600 hover:text-white transition-all">Voir</button>` : `<div class="flex-1 py-2 text-[10px] font-bold uppercase bg-slate-50 text-slate-300 rounded-lg text-center cursor-not-allowed">Vide</div>`}
+                  ${canEdit ? `<button onclick="updateSingleDoc('${doc.key}', '${myData.id}')" class="w-10 flex items-center justify-center bg-slate-100 text-slate-500 rounded-lg hover:bg-slate-800 hover:text-white transition-all"><i class="fa-solid fa-pen"></i></button>` : ""}
+              </div>
+          </div>`;
       });
       gridHtml += "</div>";
       dC.innerHTML = gridHtml;
     }
 
-    // --- 8. BRANCHEMENT DES BOUTONS D'ACTION (EXPORT ZIP / BATCH UPLOAD) ---
     const bulkBtn = document.getElementById("btn-bulk-archive");
     if (bulkBtn) bulkBtn.setAttribute("onclick", `window.openBulkArchiveModal('${myData.id}')`);
 
     const exportBtn = document.getElementById("btn-export-zip");
     if (exportBtn) exportBtn.setAttribute("onclick", `window.downloadEmployeeZip('${myData.id}', '${myData.nom.replace(/'/g, "\\'")}')`);
 
-    // --- 9. LOGIQUE DE TERRAIN (Conservée) ---
     const mobileSection = document.getElementById("mobile-recap-section");
     if (myData.contenu_pointage === "COMPLET") {
       if (mobileSection) mobileSection.classList.remove("hidden");
@@ -782,42 +681,22 @@ export async function loadMyProfile() {
   }
 }
 
-
-
-
-
-
-
-
-
 export async function saveMyProfile() {
   Swal.fire({ title: "Sauvegarde...", didOpen: () => Swal.showLoading() });
 
-  // --- CORRECTION : Recherche sécurisée du Matricule ---
-  // On nettoie les noms (enlève points, espaces) pour comparer "sena.broda" et "Sena Broda"
-  const normalize = (s) => (s ? s.toLowerCase().replace(/[\.\s_-]/g, "") : "");
-  const searchNom = normalize(AppState.currentUser.nom);
-
-  const myData = AppState.employees.find(
-    (e) =>
-      normalize(e.nom) === searchNom ||
-      normalize(e.nom).includes(searchNom) ||
-      searchNom.includes(normalize(e.nom)),
-  );
-
-  // On utilise directement l'ID de la session actuelle, c'est le plus sûr
-  const idToSend = AppState.currentUser.id;
-
-  console.log("Tentative d'envoi pour l'ID :", idToSend);
+  const idToSend = AppState.currentUser?.id;
+  if (!idToSend) {
+    return Swal.fire("Erreur", "Identifiant session introuvable.", "error");
+  }
 
   const fd = new FormData();
   fd.append("id", idToSend); 
-  fd.append("email", document.getElementById("emp-email").value);
-  fd.append("phone", document.getElementById("emp-phone").value);
-  fd.append("address", document.getElementById("emp-address").value);
-  fd.append("dob", document.getElementById("emp-dob").value);
-  fd.append("agent", AppState.currentUser.nom);
-  fd.append("agent_role", AppState.currentUser.role); 
+  fd.append("email", document.getElementById("emp-email")?.value || "");
+  fd.append("phone", document.getElementById("emp-phone")?.value || "");
+  fd.append("address", document.getElementById("emp-address")?.value || "");
+  fd.append("dob", document.getElementById("emp-dob")?.value || "");
+  fd.append("agent", AppState.currentUser?.nom || "");
+  fd.append("agent_role", AppState.currentUser?.role || ""); 
   fd.append("doc_type", "text_update"); 
 
   const photoInput = document.getElementById("emp-upload-photo");
@@ -826,7 +705,7 @@ export async function saveMyProfile() {
   } else if (AppState.capturedBlob) {
     fd.append("new_photo", AppState.capturedBlob, "photo_profil.jpg");
   }
-  // --- FIN DU REMPLACEMENT ---
+
   try {
     const response = await secureFetch(URL_EMPLOYEE_UPDATE, {
       method: "POST",
@@ -836,7 +715,7 @@ export async function saveMyProfile() {
     if (response.ok) {
       Swal.fire("Succès", "Votre profil a été mis à jour", "success");
       toggleEditMode();
-      fetchData(true); // On met à jour ses infos
+      fetchData(true);
     } else {
       throw new Error("Erreur serveur (" + response.status + ")");
     }
@@ -846,26 +725,33 @@ export async function saveMyProfile() {
 }
 
 export function toggleEditMode() {
-  const ids = ["emp-email", "emp-phone", "emp-address", "emp-dob"],
-    btn = document.getElementById("save-btn-container"),
-    dis = document.getElementById("emp-email").disabled;
+  const ids = ["emp-email", "emp-phone", "emp-address", "emp-dob"];
+  const btn = document.getElementById("save-btn-container");
+  const emailEl = document.getElementById("emp-email");
+  if (!emailEl) return;
+
+  const dis = emailEl.disabled;
   ids.forEach((i) => {
     const el = document.getElementById(i);
-    el.disabled = !dis;
-    if (!dis) el.classList.add("bg-white", "ring-2", "ring-blue-100");
-    else el.classList.remove("bg-white", "ring-2", "ring-blue-100");
+    if (el) {
+      el.disabled = !dis;
+      if (!dis) el.classList.add("bg-white", "ring-2", "ring-blue-100");
+      else el.classList.remove("bg-white", "ring-2", "ring-blue-100");
+    }
   });
+
   if (dis) {
-    btn.classList.remove("hidden");
-    document.getElementById("emp-email").focus();
+    if (btn) btn.classList.remove("hidden");
+    emailEl.focus();
   } else {
-    btn.classList.add("hidden");
+    if (btn) btn.classList.add("hidden");
     loadMyProfile();
   }
 }
 
 export function triggerPhotoUpload() {
-  document.getElementById("emp-upload-photo").click();
+  const upload = document.getElementById("emp-upload-photo");
+  if (upload) upload.click();
 }
 
 export function previewPhoto(e) {
@@ -873,162 +759,120 @@ export function previewPhoto(e) {
   if (f) {
     const r = new FileReader();
     r.onload = function (ev) {
-      document.getElementById("emp-photo-real").src = ev.target.result;
-      document.getElementById("emp-photo-real").classList.remove("hidden");
-      document.getElementById("emp-avatar").classList.add("hidden");
-      document.getElementById("save-btn-container").classList.remove("hidden");
+      const real = document.getElementById("emp-photo-real");
+      const avatar = document.getElementById("emp-avatar");
+      const saveBtn = document.getElementById("save-btn-container");
+      if (real) {
+        real.src = ev.target.result;
+        real.classList.remove("hidden");
+      }
+      if (avatar) avatar.classList.add("hidden");
+      if (saveBtn) saveBtn.classList.remove("hidden");
     };
     r.readAsDataURL(f);
   }
 }
 
 export function openFullFolder(id) {
-  const e = AppState.employees.find((x) => x.id === id);
+  const e = AppState.employees.find((x) => String(x.id) === String(id));
   if (!e) return;
 
-  // 1. Remplissage de l'identité de base
-  document.getElementById("folder-photo").src =
-    formatGoogleLink(e.photo) || "https://via.placeholder.com/150";
-  document.getElementById("folder-name").innerText = e.nom;
-  document.getElementById("folder-id").innerText = "MATRICULE : " + e.matricule;
-  document.getElementById("folder-poste").innerText = e.poste;
-  document.getElementById("folder-dept").innerText = e.dept;
-  document.getElementById("folder-email").innerText =
-    e.email || "Non renseigné";
-  document.getElementById("folder-phone").innerText =
-    e.telephone || "Non renseigné";
-  document.getElementById("folder-address").innerText =
-    e.adresse || "Non renseignée";
+  const setElemText = (elId, val) => {
+    const el = document.getElementById(elId);
+    if (el) el.innerText = val || "";
+  };
 
-  // 2. Gestion des dates de contrat
+  const folderPhoto = document.getElementById("folder-photo");
+  if (folderPhoto) folderPhoto.src = formatGoogleLink(e.photo) || "https://via.placeholder.com/150";
+
+  setElemText("folder-name", e.nom);
+  setElemText("folder-id", "MATRICULE : " + e.matricule);
+  setElemText("folder-poste", e.poste);
+  setElemText("folder-dept", e.dept);
+  setElemText("folder-email", e.email || "Non renseigné");
+  setElemText("folder-phone", e.telephone || "Non renseigné");
+  setElemText("folder-address", e.adresse || "Non renseignée");
+
   if (e.date) {
     let sD = parseDateSmart(e.date);
-    document.getElementById("folder-start").innerText =
-      sD.toLocaleDateString("fr-FR");
+    setElemText("folder-start", sD.toLocaleDateString("fr-FR"));
     let eD = new Date(sD);
     eD.setDate(eD.getDate() + (parseInt(e.limit) || 365));
-    document.getElementById("folder-end").innerText =
-      eD.toLocaleDateString("fr-FR");
+    setElemText("folder-end", eD.toLocaleDateString("fr-FR"));
   }
 
-  // --- 3. NOUVEAU : INSERTION DU BLOC RÉMUNÉRATION (SÉCURISÉ) ---
-  // On cherche l'endroit dans la colonne de gauche (md:w-1/3) pour injecter le salaire
-  const infoContainer =
-    document.getElementById("folder-dept").parentElement.parentElement;
+  const deptEl = document.getElementById("folder-dept");
+  if (deptEl && deptEl.parentElement && deptEl.parentElement.parentElement) {
+    const infoContainer = deptEl.parentElement.parentElement;
+    const existingSalary = document.getElementById("folder-salary-block");
+    if (existingSalary) existingSalary.remove();
 
-  // On vérifie si le bloc existe déjà pour ne pas le doubler
-  const existingSalary = document.getElementById("folder-salary-block");
-  if (existingSalary) existingSalary.remove();
+    const salaryHtml = `
+      <div id="folder-salary-block" class="mt-4 pt-4 border-t border-white/10">
+          <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Salaire de Base Fixe</p>
+          <div class="flex items-center gap-2">
+              <p class="text-sm font-black text-blue-400 sensitive-value" onclick="window.toggleSensitiveData(this)">
+                  ${new Intl.NumberFormat("fr-FR").format(e.salaire_base_fixe || 0)} CFA
+              </p>
+              <i class="fa-solid fa-eye-slash text-[9px] text-slate-600"></i>
+          </div>
+      </div>`;
+    infoContainer.insertAdjacentHTML("beforeend", salaryHtml);
+  }
 
-  const salaryHtml = `
-    <div id="folder-salary-block" class="mt-4 pt-4 border-t border-white/10">
-        <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Salaire de Base Fixe</p>
-        <div class="flex items-center gap-2">
-            <p class="text-sm font-black text-blue-400 sensitive-value" onclick="window.toggleSensitiveData(this)">
-                ${new Intl.NumberFormat("fr-FR").format(e.salaire_base_fixe || 0)} CFA
-            </p>
-            <i class="fa-solid fa-eye-slash text-[9px] text-slate-600"></i>
-        </div>
-    </div>`;
-
-  infoContainer.insertAdjacentHTML("beforeend", salaryHtml);
-  // -------------------------------------------------------------
-
-  // 4. Remplissage de la grille des documents
   const grid = document.getElementById("folder-docs-grid");
-  grid.innerHTML = "";
+  if (grid) {
+    grid.innerHTML = "";
+    const docs = [
+      { label: `Document Engagement`, link: e.doc, icon: "fa-file-signature", color: "blue", key: "contrat" },
+      { label: "Curriculum Vitae", link: e.cv_link, icon: "fa-file-pdf", color: "indigo", key: "cv" },
+      { label: "Lettre Motivation", link: e.lm_link, icon: "fa-envelope-open-text", color: "pink", key: "lm" },
+      { label: "Pièce d'Identité", link: e.id_card_link, icon: "fa-id-card", color: "slate", key: "id_card" },
+      { label: "Diplômes/Certifs", link: e.diploma_link, icon: "fa-graduation-cap", color: "emerald", key: "diploma" },
+      { label: "Attestations / Autres", link: e.attestation_link, icon: "fa-file-invoice", color: "orange", key: "attestation" },
+    ];
 
-  const docs = [
-    {
-      label: `Document Engagement`,
-      link: e.doc,
-      icon: "fa-file-signature",
-      color: "blue",
-      key: "contrat",
-    },
-    {
-      label: "Curriculum Vitae",
-      link: e.cv_link,
-      icon: "fa-file-pdf",
-      color: "indigo",
-      key: "cv",
-    },
-    {
-      label: "Lettre Motivation",
-      link: e.lm_link,
-      icon: "fa-envelope-open-text",
-      color: "pink",
-      key: "lm",
-    },
-    {
-      label: "Pièce d'Identité",
-      link: e.id_card_link,
-      icon: "fa-id-card",
-      color: "slate",
-      key: "id_card",
-    },
-    {
-      label: "Diplômes/Certifs",
-      link: e.diploma_link,
-      icon: "fa-graduation-cap",
-      color: "emerald",
-      key: "diploma",
-    },
-    {
-      label: "Attestations / Autres",
-      link: e.attestation_link,
-      icon: "fa-file-invoice",
-      color: "orange",
-      key: "attestation",
-    },
-  ];
+    docs.forEach((doc) => {
+      const hasLink = doc.link && doc.link.length > 5;
+      const safeLabel = doc.label.replace(/'/g, "\\'");
+      const canEdit = ["ADMIN", "RH", "MANAGER"].includes(AppState.currentUser?.role);
 
-  docs.forEach((doc) => {
-    const hasLink = doc.link && doc.link.length > 5;
-    const safeLabel = doc.label.replace(/'/g, "\\'");
-    const canEdit =
-      AppState.currentUser.role === "ADMIN" ||
-      AppState.currentUser.role === "RH" ||
-      AppState.currentUser.role === "MANAGER";
+      grid.innerHTML += `
+        <div class="p-4 rounded-2xl border ${hasLink ? "bg-white shadow-sm border-slate-200" : "bg-slate-100 opacity-50"} flex items-center justify-between group">
+            <div class="flex items-center gap-3">
+                <div class="p-2.5 rounded-xl bg-${doc.color}-50 text-${doc.color}-600"><i class="fa-solid ${doc.icon}"></i></div>
+                <p class="text-xs font-bold text-slate-700">${doc.label}</p>
+            </div>
+            <div class="flex gap-2">
+                ${hasLink ? `<button onclick="viewDocumentHistory('${e.id}', '${doc.key}', '${safeLabel}')" class="p-2 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" title="Voir l'historique"><i class="fa-solid fa-clock-rotate-left"></i></button>` : ""}
+                ${hasLink ? `<button onclick="window.viewDocument('${doc.link}', '${safeLabel}')" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Consulter Actuel"><i class="fa-solid fa-eye"></i></button>` : ""}
+                ${canEdit ? `<button onclick="updateSingleDoc('${doc.key}', '${e.id}')" class="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Mettre à jour"><i class="fa-solid fa-cloud-arrow-up"></i></button>` : ""}
+            </div>
+        </div>`;
+    });
+  }
 
-    grid.innerHTML += `
-            <div class="p-4 rounded-2xl border ${hasLink ? "bg-white shadow-sm border-slate-200" : "bg-slate-100 opacity-50"} flex items-center justify-between group">
-                <div class="flex items-center gap-3">
-                    <div class="p-2.5 rounded-xl bg-${doc.color}-50 text-${doc.color}-600"><i class="fa-solid ${doc.icon}"></i></div>
-                    <p class="text-xs font-bold text-slate-700">${doc.label}</p>
-                </div>
-               <div class="flex gap-2">
-                    ${hasLink ? `<button onclick="viewDocumentHistory('${e.id}', '${doc.key}', '${safeLabel}')" class="p-2 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg" title="Voir l'historique"><i class="fa-solid fa-clock-rotate-left"></i></button>` : ""}
-                    ${hasLink ? `<button onclick="viewDocument('${doc.link}', '${safeLabel}')" class="p-2 text-blue-600 hover:bg-blue-50 rounded-lg" title="Consulter Actuel"><i class="fa-solid fa-eye"></i></button>` : ""}
-                    ${canEdit ? `<button onclick="updateSingleDoc('${doc.key}', '${e.id}')" class="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg" title="Mettre à jour"><i class="fa-solid fa-cloud-arrow-up"></i></button>` : ""}
-                </div>
-
-                
-            </div>`;
-  });
-
-// --- NOUVEAU : Associer les boutons d'archivage au bon employé ---
   const bulkBtn = document.getElementById("btn-bulk-archive");
   if (bulkBtn) bulkBtn.setAttribute("onclick", `window.openBulkArchiveModal('${e.id}')`);
 
   const exportBtn = document.getElementById("btn-export-zip");
   if (exportBtn) exportBtn.setAttribute("onclick", `window.downloadEmployeeZip('${e.id}', '${escapeHTML(e.nom)}')`);
 
-  document.getElementById("folder-modal").classList.remove("hidden");
+  const modal = document.getElementById("folder-modal");
+  if (modal) modal.classList.remove("hidden");
 }
 
 export function closeFolderModal() {
-  document.getElementById("folder-modal").classList.add("hidden");
+  const modal = document.getElementById("folder-modal");
+  if (modal) modal.classList.add("hidden");
 }
 
 export function toggleMoreDocs(btn) {
-  // Affiche tous les éléments cachés
   document.querySelectorAll(".more-docs").forEach((el) => {
     el.classList.remove("hidden");
-    el.classList.add("animate-fadeIn"); // Petit effet d'apparition
+    el.classList.add("animate-fadeIn");
   });
-  // Supprime le bouton après le clic
-  btn.parentElement.remove();
+  if (btn?.parentElement) btn.parentElement.remove();
 }
 
 export function openDocCamera(target) {
@@ -1043,7 +887,15 @@ export function openDocCamera(target) {
     if (result.isConfirmed) {
       startGenericCamera(target);
     } else if (result.dismiss === Swal.DismissReason.cancel) {
-      document.getElementById("f-" + target).click();
+      const fileInput =
+        document.getElementById("f-" + target) ||
+        document.getElementById("file-" + target) ||
+        document.getElementById(target);
+      if (fileInput) {
+        fileInput.click();
+      } else {
+        console.warn(`Champ de fichier introuvable pour la cible : ${target}`);
+      }
     }
   });
 }
@@ -1059,18 +911,20 @@ export async function startGenericCamera(target) {
       confirmButtonText: "CAPTURER",
       showCancelButton: true,
       didOpen: () => {
-        document.getElementById("temp-video").srcObject = stream;
+        const vid = document.getElementById("temp-video");
+        if (vid) vid.srcObject = stream;
       },
     }).then((result) => {
       if (result.isConfirmed) {
         const video = document.getElementById("temp-video");
+        if (!video) return;
         const canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
         canvas.getContext("2d").drawImage(video, 0, 0);
         canvas.toBlob(
           (blob) => {
-            saveDoc(target, blob);
+            if (blob) saveDoc(target, blob);
             stream.getTracks().forEach((t) => t.stop());
           },
           "image/jpeg",
@@ -1086,27 +940,28 @@ export async function startGenericCamera(target) {
 }
 
 export function previewDocFile(event, target) {
-  const file = event.target.files[0];
+  const file = event.target.files?.[0];
   if (file) saveDoc(target, file);
 }
 
 export async function saveDoc(target, fileOrBlob) {
-  // Rendre asynchrone
-  // --- NOUVEAU : Compression si c'est une image ---
-  Swal.update({ text: "Compression du document en cours..." }); // Affiche un loader si nécessaire
+  if (Swal.isVisible()) {
+    Swal.update({ text: "Compression du document en cours..." });
+  }
   const processedFile = await compressImage(fileOrBlob);
-  AppState.docBlobs[target] = processedFile; // Stocke la version compressée
+  if (!AppState.docBlobs) AppState.docBlobs = {};
+  AppState.docBlobs[target] = processedFile;
 
   const preview = document.getElementById("preview-" + target);
   const icon = document.getElementById("icon-" + target);
 
   if (preview) {
-    preview.src = URL.createObjectURL(processedFile); // Utilise processedFile ici
+    preview.src = URL.createObjectURL(processedFile);
     preview.classList.remove("hidden");
     if (icon) icon.classList.add("hidden");
   } else if (target === "leave_justif") {
-    document.getElementById("leave-doc-preview").innerHTML =
-      '<i class="fa-solid fa-check text-emerald-500"></i>';
+    const previewEl = document.getElementById("leave-doc-preview");
+    if (previewEl) previewEl.innerHTML = '<i class="fa-solid fa-check text-emerald-500"></i>';
   }
 }
 
@@ -1129,13 +984,14 @@ export async function updateSingleDoc(docKey, employeeId) {
     });
     const fd = new FormData();
     fd.append("id", employeeId);
-    fd.append("agent", AppState.currentUser.nom);
-    fd.append("agent_role", AppState.currentUser.role);
+    fd.append("agent", AppState.currentUser?.nom || "");
+    fd.append("agent_role", AppState.currentUser?.role || "");
 
-    // --- NOUVEAU : COMPRESSION POUR LA MISE À JOUR ---
-    Swal.update({ text: "Compression du document en cours..." });
+    if (Swal.isVisible()) {
+      Swal.update({ text: "Compression du document en cours..." });
+    }
     const compressedFile = await compressImage(file);
-    fd.append("new_photo", compressedFile); // Champ utilisé par ton serveur
+    fd.append("new_photo", compressedFile);
     fd.append("doc_type", docKey);
 
     try {
@@ -1145,7 +1001,7 @@ export async function updateSingleDoc(docKey, employeeId) {
       });
       if (r.ok) {
         Swal.fire("Succès", "Document mis à jour", "success");
-        refreshAllData();
+        if (typeof window.refreshAllData === "function") window.refreshAllData();
       }
     } catch (e) {
       Swal.fire("Erreur", e.message, "error");
@@ -1155,60 +1011,38 @@ export async function updateSingleDoc(docKey, employeeId) {
 
 export function updateFileFeedback(inputId, labelId) {
   const input = document.getElementById(inputId);
-  const label = document.getElementById(labelId); // Le bouton ou le conteneur visuel
-  const file = input.files[0];
+  const label = document.getElementById(labelId);
+  const file = input?.files?.[0];
 
-  if (file) {
-    // Change le style pour dire "C'est bon !"
-    if (label) {
-      // Sauvegarde le texte original si pas déjà fait
-      if (!label.dataset.originalText)
-        label.dataset.originalText = label.innerHTML;
-
-      // Affiche le nom et une icône verte
-      label.innerHTML = `<i class="fa-solid fa-check-circle text-emerald-500 mr-2"></i> <span class="text-emerald-700 font-bold text-[10px] truncate">${file.name}</span>`;
-      label.classList.add("bg-emerald-50", "border-emerald-200");
-      label.classList.remove(
-        "bg-white",
-        "bg-blue-50",
-        "text-slate-600",
-        "text-blue-600",
-      );
-    }
+  if (file && label) {
+    if (!label.dataset.originalText) label.dataset.originalText = label.innerHTML;
+    label.innerHTML = `<i class="fa-solid fa-check-circle text-emerald-500 mr-2"></i> <span class="text-emerald-700 font-bold text-[10px] truncate">${file.name}</span>`;
+    label.classList.add("bg-emerald-50", "border-emerald-200");
+    label.classList.remove("bg-white", "bg-blue-50", "text-slate-600", "text-blue-600");
   }
 }
 
 export async function handleOnboarding(e) {
   e.preventDefault();
   console.log("Tentative de création de profil...");
-    const fd = new FormData();
-
-
-  // 1. Vérification de la photo de profil (Obligatoire)
-  if (AppState.capturedBlob) {
-    const compressed = await compressImage(AppState.capturedBlob);
-    fd.append("photo", compressed, "photo_profil.jpg");
-  }
+  const fd = new FormData();
 
   try {
-  
     const getVal = (id) => {
       const el = document.getElementById(id);
       if (!el) {
-        console.warn(`Attention: L'élément avec l'ID ${id} est introuvable.`);
-        return ""; // Retourne vide au lieu de crasher
+        console.warn(`Attention: L'élément avec l'ID "${id}" est introuvable dans le DOM.`);
+        return "";
       }
-      return el.value;
+      return el.value !== undefined && el.value !== null ? el.value : "";
     };
 
-    // CHAMPS GÉNERAUX ET HIÉRARCHIQUES
-    fd.append("manager_id", document.getElementById("f-manager").value);
-    const scopeVal = document.getElementById("f-scope").value;
+    // Champs généraux et hiérarchiques sécurisés
+    fd.append("manager_id", getVal("f-manager"));
+    const scopeVal = getVal("f-scope");
     fd.append(
       "scope",
-      scopeVal
-        ? JSON.stringify(scopeVal.split(",").map((s) => s.trim()))
-        : "[]",
+      scopeVal ? JSON.stringify(scopeVal.split(",").map((s) => s.trim())) : "[]",
     );
 
     fd.append("nom", getVal("f-nom"));
@@ -1225,58 +1059,52 @@ export async function handleOnboarding(e) {
     fd.append("contenu_pointage", getVal("f-contenu-pointage"));
     fd.append("rythme", getVal("f-rythme"));
 
-    // Coordonnées de paiement. Les champs sans rapport avec le mode choisi
-    // partent explicitement vides : changer d'avis en cours de saisie ne
-    // doit pas laisser un IBAN sur un salarié payé en espèces.
+    // Coordonnées de paiement
     if (window.collectPaymentFields) {
       const paiement = window.collectPaymentFields("f");
-      if (paiement.erreurs.length > 0) {
+      if (paiement && paiement.erreurs && paiement.erreurs.length > 0) {
         Swal.fire("Coordonnées de paiement", paiement.erreurs.join("\n"), "warning");
         return;
       }
-      Object.entries(paiement.valeurs).forEach(([cle, val]) => {
-        fd.append(cle, val === null ? "" : val);
-      });
+      if (paiement && paiement.valeurs) {
+        Object.entries(paiement.valeurs).forEach(([cle, val]) => {
+          fd.append(cle, val === null ? "" : val);
+        });
+      }
     }
+
     fd.append("limit", getVal("f-limit")); // type_contrat
     fd.append("role", getVal("f-role"));
 
-    // NOUVEAUX CHAMPS CONTRACTUELS (INTÉGRATION COMPLÈTE)
-    fd.append("salaire_brut_fixe", getVal("f-salaire-fixe")); // Nouveau champ
-    fd.append("indemnite_transport", getVal("f-indemnite-transport")); // Nouveau champ
-    fd.append("indemnite_logement", getVal("f-indemnite-logement")); // Nouveau champ
-    fd.append("temps_travail", getVal("f-temps-travail")); // Nouveau champ
-    fd.append("lieu_naissance", getVal("f-lieu-naissance")); // Nouveau champ
-    fd.append("nationalite", getVal("f-nationalite")); // Nouveau champ
-    fd.append("contract_template_id", getVal("f-contract-template-selector")); // Nouveau champ pour le modèle choisi
+    // Champs contractuels
+    fd.append("salaire_brut_fixe", getVal("f-salaire-fixe"));
+    fd.append("indemnite_transport", getVal("f-indemnite-transport"));
+    fd.append("indemnite_logement", getVal("f-indemnite-logement"));
+    fd.append("temps_travail", getVal("f-temps-travail"));
+    fd.append("lieu_naissance", getVal("f-lieu-naissance"));
+    fd.append("nationalite", getVal("f-nationalite"));
+    fd.append("contract_template_id", getVal("f-contract-template-selector"));
     fd.append("civilite", getVal("f-civilite"));
     fd.append("duree_essai", getVal("f-duree-essai"));
     fd.append("lieu_signature", getVal("f-lieu-signature"));
-    fd.append("contract_template_id", getVal("f-contract-template-selector"));
-    fd.append(
-      "agent",
-      AppState.currentUser ? AppState.currentUser.nom : "Système",
-    );
+    fd.append("agent", AppState.currentUser ? AppState.currentUser.nom : "Système");
 
-    // 3. Ajout de la photo de profil (Obligatoire)
-    Swal.update({ text: "Compression de la photo de profil..." });
-    const compressedProfilePhoto = await compressImage(AppState.capturedBlob);
-    fd.append("photo", compressedProfilePhoto, "photo_profil.jpg");
+    // Photo de profil
+    if (AppState.capturedBlob) {
+      const compressedProfilePhoto = await compressImage(AppState.capturedBlob);
+      fd.append("photo", compressedProfilePhoto, "photo_profil.jpg");
+    }
 
-    // 4. Ajout des documents KYC (Optionnels)
-    if (AppState.docBlobs.id_card)
+    // Documents KYC (optionnels)
+    if (AppState.docBlobs?.id_card)
       fd.append("id_card", AppState.docBlobs.id_card, "piece_identite.jpg");
-    if (AppState.docBlobs.cv) fd.append("cv", AppState.docBlobs.cv, "cv.jpg");
-    if (AppState.docBlobs.diploma)
+    if (AppState.docBlobs?.cv)
+      fd.append("cv", AppState.docBlobs.cv, "cv.jpg");
+    if (AppState.docBlobs?.diploma)
       fd.append("diploma", AppState.docBlobs.diploma, "diplome.jpg");
-    if (AppState.docBlobs.attestation)
-      fd.append(
-        "attestation",
-        AppState.docBlobs.attestation,
-        "attestation.jpg",
-      );
+    if (AppState.docBlobs?.attestation)
+      fd.append("attestation", AppState.docBlobs.attestation, "attestation.jpg");
 
-    // 5. Affichage du chargement
     Swal.fire({
       title: "Création du dossier...",
       text: "Envoi des informations et des documents au serveur sécurisé",
@@ -1284,7 +1112,6 @@ export async function handleOnboarding(e) {
       allowOutsideClick: false,
     });
 
-    // 6. Envoi au serveur Render
     const response = await secureFetch(URL_WRITE_POST, {
       method: "POST",
       body: fd,
@@ -1298,8 +1125,9 @@ export async function handleOnboarding(e) {
         confirmButtonColor: "#2563eb",
       });
 
-      // --- NETTOYAGE COMPLET DU FORMULAIRE ---
-      e.target.reset();
+      if (e.target && typeof e.target.reset === "function") {
+        e.target.reset();
+      }
       resetCamera();
       AppState.docBlobs = {
         id_card: null,
@@ -1308,6 +1136,7 @@ export async function handleOnboarding(e) {
         attestation: null,
         leave_justif: null,
       };
+
       const docIds = ["id_card", "cv", "diploma", "attestation"];
       docIds.forEach((id) => {
         const label = document.getElementById("btn-" + id);
@@ -1323,9 +1152,13 @@ export async function handleOnboarding(e) {
       });
 
       await fetchData(true);
-      window.switchView(AppState.employees);
+
+      const targetView = document.getElementById("view-employees") ? "employees" : "AppState.employees";
+      if (typeof window.switchView === "function") {
+        window.switchView(targetView);
+      }
     } else {
-      const errorData = await response.json();
+      const errorData = await response.json().catch(() => ({}));
       throw new Error(errorData.error || "Erreur serveur");
     }
   } catch (error) {
@@ -1339,11 +1172,15 @@ export async function handleOnboarding(e) {
 }
 
 export function moveStep(delta) {
+  const getVal = (id) => {
+    const el = document.getElementById(id);
+    return el ? el.value.trim() : "";
+  };
+
   if (delta > 0) {
-    // Validation Étape 1
     if (AppState.currentWizardStep === 1) {
-      const nom = document.getElementById("f-nom").value.trim();
-      const email = document.getElementById("f-email").value.trim();
+      const nom = getVal("f-nom");
+      const email = getVal("f-email");
       if (!nom || !email) {
         Swal.fire(
           "Champ manquant",
@@ -1354,13 +1191,12 @@ export function moveStep(delta) {
       }
     }
 
-    // VALIDATION ÉTAPE 2 (C'est ici que ça règle ton bug)
     if (AppState.currentWizardStep === 2) {
-      const poste = document.getElementById("f-poste").value.trim();
-      const dateEmbauche = document.getElementById("f-date").value; // Le fameux f-date
+      const poste = getVal("f-poste");
+      const dateEmbauche = getVal("f-date");
 
       if (!poste || !dateEmbauche) {
-        PremiumUI.vibrate("error");
+        if (typeof PremiumUI !== "undefined" && PremiumUI.vibrate) PremiumUI.vibrate("error");
         Swal.fire(
           "Données du contrat",
           "Le poste et la date d'embauche sont obligatoires pour générer le contrat.",
@@ -1374,63 +1210,57 @@ export function moveStep(delta) {
   const nextStep = AppState.currentWizardStep + delta;
   if (nextStep < 1 || nextStep > 3) return;
 
-  // Mise à jour visuelle
-  document
-    .getElementById(`step-${AppState.currentWizardStep}`)
-    .classList.add("hidden");
-  document.getElementById(`step-${nextStep}`).classList.remove("hidden");
+  const curStepEl = document.getElementById(`step-${AppState.currentWizardStep}`);
+  const nextStepEl = document.getElementById(`step-${nextStep}`);
+  if (curStepEl) curStepEl.classList.add("hidden");
+  if (nextStepEl) nextStepEl.classList.remove("hidden");
 
   for (let i = 1; i <= 3; i++) {
     const dot = document.getElementById(`step-dot-${i}`);
-    dot.classList.toggle("bg-blue-600", i <= nextStep);
-    dot.classList.toggle("bg-white/10", i > nextStep);
+    if (dot) {
+      dot.classList.toggle("bg-blue-600", i <= nextStep);
+      dot.classList.toggle("bg-white/10", i > nextStep);
+    }
   }
 
-  document.getElementById("btn-prev").style.visibility =
-    nextStep === 1 ? "hidden" : "visible";
-  document
-    .getElementById("btn-next")
-    .classList.toggle("hidden", nextStep === 3);
-  document
-    .getElementById("btn-submit-wizard")
-    .classList.toggle("hidden", nextStep !== 3);
+  const prevBtn = document.getElementById("btn-prev");
+  if (prevBtn) prevBtn.style.visibility = nextStep === 1 ? "hidden" : "visible";
+
+  const nextBtn = document.getElementById("btn-next");
+  if (nextBtn) nextBtn.classList.toggle("hidden", nextStep === 3);
+
+  const submitBtn = document.getElementById("btn-submit-wizard");
+  if (submitBtn) submitBtn.classList.toggle("hidden", nextStep !== 3);
 
   const titles = {
     1: "Identité & Photo",
     2: "Poste & Finances",
     3: "Dossier & Hiérarchie",
   };
-  document.getElementById("wizard-subtitle").innerText =
-    `Étape ${nextStep} : ${titles[nextStep]}`;
+  const subtitle = document.getElementById("wizard-subtitle");
+  if (subtitle) subtitle.innerText = `Étape ${nextStep} : ${titles[nextStep]}`;
+  
   AppState.currentWizardStep = nextStep;
-  document.getElementById("main-scroll-container").scrollTo(0, 0);
+  
+  const scrollContainer = document.getElementById("main-scroll-container");
+  if (scrollContainer) scrollContainer.scrollTo(0, 0);
 }
 
 export function toggleContractFieldsVisibility() {
-  const selectedEmployeeType = document.getElementById("f-type").value;
+  const typeEl = document.getElementById("f-type");
+  const selectedEmployeeType = typeEl ? typeEl.value : "";
 
-  // Masquer tous les champs conditionnels par défaut
-  document
-    .querySelectorAll(".field-group-contract[data-employee-type]")
-    .forEach((el) => {
-      el.style.display = "none";
-    });
+  document.querySelectorAll(".field-group-contract[data-employee-type]").forEach((el) => {
+    el.style.display = "none";
+  });
 
-  // Afficher les champs communs à tous (ceux sans data-employee-type)
-  document
-    .querySelectorAll(".field-group-contract:not([data-employee-type])")
-    .forEach((el) => {
-      el.style.display = "block";
-    });
+  document.querySelectorAll(".field-group-contract:not([data-employee-type])").forEach((el) => {
+    el.style.display = "block";
+  });
 
-  // Afficher les champs spécifiques au type d'employé sélectionné
-  document
-    .querySelectorAll(
-      `.field-group-contract[data-employee-type="${selectedEmployeeType}"]`,
-    )
-    .forEach((el) => {
-      el.style.display = "block";
-    });
+  document.querySelectorAll(`.field-group-contract[data-employee-type="${selectedEmployeeType}"]`).forEach((el) => {
+    el.style.display = "block";
+  });
 }
 
 export async function startCameraFeed() {
@@ -1439,25 +1269,40 @@ export async function startCameraFeed() {
       video: { facingMode: "user" },
     });
     const v = document.getElementById("video-stream");
-    v.srcObject = AppState.videoStream;
-    v.classList.remove("hidden");
-    document.getElementById("captured-image").classList.add("hidden");
-    document.getElementById("btn-capture").classList.remove("hidden");
-    document.getElementById("initial-controls").classList.add("hidden");
-    document.getElementById("photo-placeholder").classList.add("hidden");
+    if (v) {
+      v.srcObject = AppState.videoStream;
+      v.classList.remove("hidden");
+    }
+    const capturedImg = document.getElementById("captured-image");
+    if (capturedImg) capturedImg.classList.add("hidden");
+    const btnCap = document.getElementById("btn-capture");
+    if (btnCap) btnCap.classList.remove("hidden");
+    const initControls = document.getElementById("initial-controls");
+    if (initControls) initControls.classList.add("hidden");
+    const placeholder = document.getElementById("photo-placeholder");
+    if (placeholder) placeholder.classList.add("hidden");
   } catch (e) {
     Swal.fire("Erreur", "Caméra bloquée", "error");
   }
 }
 
 export function resetCamera() {
-  document.getElementById("captured-image").classList.add("hidden");
-  document.getElementById("btn-retake").classList.add("hidden");
-  document.getElementById("btn-capture").classList.add("hidden");
-  document.getElementById("video-stream").classList.add("hidden");
-  document.getElementById("initial-controls").classList.remove("hidden");
-  document.getElementById("file-upload").value = "";
-  document.getElementById("photo-placeholder").classList.remove("hidden");
+  const capturedImg = document.getElementById("captured-image");
+  const btnRetake = document.getElementById("btn-retake");
+  const btnCapture = document.getElementById("btn-capture");
+  const videoStream = document.getElementById("video-stream");
+  const initialControls = document.getElementById("initial-controls");
+  const fileUpload = document.getElementById("file-upload");
+  const photoPlaceholder = document.getElementById("photo-placeholder");
+
+  if (capturedImg) capturedImg.classList.add("hidden");
+  if (btnRetake) btnRetake.classList.add("hidden");
+  if (btnCapture) btnCapture.classList.add("hidden");
+  if (videoStream) videoStream.classList.add("hidden");
+  if (initialControls) initialControls.classList.remove("hidden");
+  if (fileUpload) fileUpload.value = "";
+  if (photoPlaceholder) photoPlaceholder.classList.remove("hidden");
+
   AppState.capturedBlob = null;
   if (AppState.videoStream) {
     AppState.videoStream.getTracks().forEach((t) => t.stop());
@@ -1466,20 +1311,25 @@ export function resetCamera() {
 }
 
 export function takeSnapshot() {
-  const v = document.getElementById("video-stream"),
-    c = document.getElementById("camera-canvas");
-  c.width = v.videoWidth;
-  c.height = v.videoHeight;
+  const v = document.getElementById("video-stream");
+  const c = document.getElementById("camera-canvas");
+  if (!v || !c) return;
+  c.width = v.videoWidth || 640;
+  c.height = v.videoHeight || 480;
   c.getContext("2d").drawImage(v, 0, 0);
   c.toBlob(
     (b) => {
       AppState.capturedBlob = b;
       const i = document.getElementById("captured-image");
-      i.src = URL.createObjectURL(b);
-      i.classList.remove("hidden");
+      if (i) {
+        i.src = URL.createObjectURL(b);
+        i.classList.remove("hidden");
+      }
       v.classList.add("hidden");
-      document.getElementById("btn-capture").classList.add("hidden");
-      document.getElementById("btn-retake").classList.remove("hidden");
+      const btnCap = document.getElementById("btn-capture");
+      if (btnCap) btnCap.classList.add("hidden");
+      const btnRetake = document.getElementById("btn-retake");
+      if (btnRetake) btnRetake.classList.remove("hidden");
       if (AppState.videoStream) {
         AppState.videoStream.getTracks().forEach((t) => t.stop());
         AppState.videoStream = null;
@@ -1491,35 +1341,37 @@ export function takeSnapshot() {
 }
 
 export function handleFileUpload(e) {
-  const f = e.target.files[0];
+  const f = e.target.files?.[0];
   if (f) {
     AppState.capturedBlob = f;
     const i = document.getElementById("captured-image");
-    i.src = URL.createObjectURL(f);
-    i.classList.remove("hidden");
-    document.getElementById("video-stream").classList.add("hidden");
-    document.getElementById("initial-controls").classList.add("hidden");
-    document.getElementById("btn-retake").classList.remove("hidden");
-    document.getElementById("photo-placeholder").classList.add("hidden");
+    if (i) {
+      i.src = URL.createObjectURL(f);
+      i.classList.remove("hidden");
+    }
+    const v = document.getElementById("video-stream");
+    if (v) v.classList.add("hidden");
+    const initControls = document.getElementById("initial-controls");
+    if (initControls) initControls.classList.add("hidden");
+    const btnRetake = document.getElementById("btn-retake");
+    if (btnRetake) btnRetake.classList.remove("hidden");
+    const placeholder = document.getElementById("photo-placeholder");
+    if (placeholder) placeholder.classList.add("hidden");
   }
 }
 
 export async function openEditModal(id) {
-  const e = AppState.employees.find((x) => x.id === id);
+  const e = AppState.employees.find((x) => String(x.id) === String(id));
   if (!e) return;
-
-  // DEBUG : Supprime ces lignes après le test
-  console.log("--- DEBUG MODAL ---");
-  console.log("ID recherché:", id);
-  console.log("Rôle brut en BDD:", e.role);
 
   AppState.currentEditingOriginal = { ...e };
 
-  document.getElementById("edit-modal").classList.remove("hidden");
-  document.getElementById("edit-id-hidden").value = id;
+  const editModal = document.getElementById("edit-modal");
+  if (editModal) editModal.classList.remove("hidden");
+  const hiddenId = document.getElementById("edit-id-hidden");
+  if (hiddenId) hiddenId.value = id;
 
-  // --- VISIBILITÉ DES BLOCS ---
-  const perms = AppState.currentUser.permissions || {};
+  const perms = AppState.currentUser?.permissions || {};
   const blockStatus = document.getElementById("edit-block-status");
   const blockContract = document.getElementById("edit-block-contract");
   const blockHierarchy = document.getElementById("edit-block-hierarchy");
@@ -1527,22 +1379,16 @@ export async function openEditModal(id) {
   if (blockContract)
     blockContract.style.display = perms.can_manage_contracts ? "block" : "none";
   if (blockHierarchy)
-    blockHierarchy.style.display = perms.can_manage_contracts
-      ? "block"
-      : "none";
+    blockHierarchy.style.display = perms.can_manage_contracts ? "block" : "none";
   if (blockStatus)
     blockStatus.style.display =
-      perms.can_manage_contracts || perms.can_edit_employee_basic
-        ? "block"
-        : "none";
+      perms.can_manage_contracts || perms.can_edit_employee_basic ? "block" : "none";
 
-  // --- REMPLISSAGE DES DROPDOWNS ---
   await populateManagerSelects();
 
   const roleSelect = document.getElementById("edit-role");
   if (roleSelect) {
-    // ON FORCE LA GÉNÉRATION DES OPTIONS IMMÉDIATEMENT
-  const roles = AppState.activeRolesList || [];
+    const roles = AppState.activeRolesList || [];
     roleSelect.innerHTML =
       '<option value="">-- Sélectionner --</option>' +
       roles
@@ -1550,37 +1396,30 @@ export async function openEditModal(id) {
         .join("");
   }
 
-  // --- PETIT DÉLAI DE SÉCURITÉ POUR LE RENDU ---
   setTimeout(() => {
-    // 1. Manager & Scope
+    const setVal = (fieldId, val) => {
+      const el = document.getElementById(fieldId);
+      if (el) el.value = val !== undefined && val !== null ? val : "";
+    };
+
     const mgrSelect = document.getElementById("edit-manager");
     if (mgrSelect) mgrSelect.value = e.manager_id || "";
     const scopeInput = document.getElementById("edit-scope");
     if (scopeInput) scopeInput.value = (e.scope || []).join(", ");
 
-    // 2. Type & Statut
-    document.getElementById("edit-type").value = e.employee_type || "OFFICE";
-    document.getElementById("edit-secteur").value = e.secteur || "GENERAL";
-    document.getElementById("edit-perimetre-lieux").value = e.perimetre_lieux || "UN_LIEU";
-    document.getElementById("edit-contenu-pointage").value = e.contenu_pointage || "MINIMAL";
-    document.getElementById("edit-rythme").value = e.rythme || "STANDARD";
-    document.getElementById("edit-statut").value = e.statut || "Actif";
+    setVal("edit-type", e.employee_type || "OFFICE");
+    setVal("edit-secteur", e.secteur || "GENERAL");
+    setVal("edit-perimetre-lieux", e.perimetre_lieux || "UN_LIEU");
+    setVal("edit-contenu-pointage", e.contenu_pointage || "MINIMAL");
+    setVal("edit-rythme", e.rythme || "STANDARD");
+    setVal("edit-statut", e.statut || "Actif");
 
-    // Coordonnées de paiement : les champs affichés dépendent du mode.
-    // Le gel vient du serveur — un lot de règlement ouvert pour ce salarié
-    // interdit de modifier ses coordonnées jusqu'à la clôture.
     if (window.renderPaymentFields) {
       window.renderPaymentFields("edit", e, { gele: !!e.coordonnees_gelees });
     }
 
-    // 3. RÔLE (FORÇAGE ET SÉCURITÉ)
     if (roleSelect) {
-      // On récupère la valeur propre
-      const dbRole = String(e.role || "")
-        .trim()
-        .toUpperCase();
-
-      // On essaie de trouver le match exact dans les options du menu
+      const dbRole = String(e.role || "").trim().toUpperCase();
       let matchFound = false;
       for (let i = 0; i < roleSelect.options.length; i++) {
         if (roleSelect.options[i].value.toUpperCase() === dbRole) {
@@ -1589,24 +1428,11 @@ export async function openEditModal(id) {
           break;
         }
       }
-
-      // Si le rôle de la BDD n'est pas trouvé dans la liste des options
-      if (!matchFound) {
-        console.warn(
-          "⚠️ Le rôle " +
-            dbRole +
-            " n'existe pas dans la config des permissions.",
-        );
-        // On peut décider de mettre une option vide pour forcer le choix
-        roleSelect.value = "";
-      }
+      if (!matchFound) roleSelect.value = "";
     }
 
-    // 4. Département & Contrat
-    const deptSelect = document.getElementById("edit-dept");
-    if (deptSelect) deptSelect.value = e.dept || "IT & Tech";
-    const typeSelect = document.getElementById("edit-type-contrat");
-    if (typeSelect) typeSelect.value = e.limit || "365";
+    setVal("edit-dept", e.dept || "IT & Tech");
+    setVal("edit-type-contrat", e.limit || "365");
 
     const dateInput = document.getElementById("edit-start-date");
     if (dateInput) {
@@ -1615,35 +1441,20 @@ export async function openEditModal(id) {
         : new Date().toISOString().split("T")[0];
     }
 
-    // 5. Finances
-    if (document.getElementById("edit-salaire-fixe"))
-      document.getElementById("edit-salaire-fixe").value =
-        e.salaire_base_fixe || 0;
-    if (document.getElementById("edit-indemnite-transport"))
-      document.getElementById("edit-indemnite-transport").value =
-        e.indemnite_transport || 0;
-    if (document.getElementById("edit-indemnite-logement"))
-      document.getElementById("edit-indemnite-logement").value =
-        e.indemnite_logement || 0;
+    setVal("edit-salaire-fixe", e.salaire_base_fixe || 0);
+    setVal("edit-indemnite-transport", e.indemnite_transport || 0);
+    setVal("edit-indemnite-logement", e.indemnite_logement || 0);
 
-    document.getElementById("edit-init-check").checked = false;
-
-    console.log("Rôle final affiché dans le menu:", roleSelect.value);
+    const initCheck = document.getElementById("edit-init-check");
+    if (initCheck) initCheck.checked = false;
   }, 50);
 }
 
 export function closeEditModal() {
-  document.getElementById("edit-modal").classList.add("hidden");
+  const modal = document.getElementById("edit-modal");
+  if (modal) modal.classList.add("hidden");
 }
 
-// ============================================================
-// ACCÈS PERSONNALISÉS (dérogations de permission par employé)
-// ------------------------------------------------------------
-// État de travail de la modale : les permissions du rôle (avec leur statut
-// "verrouillée"), les dérogations déjà actives, et les changements pas
-// encore enregistrés (une case cochée/décochée différente du défaut du
-// rôle). `changes` n'est envoyé au serveur qu'au clic sur "Enregistrer".
-// ============================================================
 let permModalState = { employeeId: null, employeeName: "", rolePermissions: {}, overrides: [], changes: {} };
 
 function humanizePermission(key) {
@@ -1654,10 +1465,14 @@ export async function openPermissionsModal(employeeId, employeeRole) {
   const employeeName = AppState.currentEditingOriginal?.nom || `Employé #${employeeId}`;
   permModalState = { employeeId, employeeName, rolePermissions: {}, overrides: [], changes: {} };
 
-  document.getElementById("permissions-modal-employee-name").innerText = `${employeeName} — rôle ${employeeRole}`;
-  document.getElementById("permissions-modal").classList.remove("hidden");
-  document.getElementById("permissions-checklist").innerHTML =
-    '<div class="text-center text-slate-400 py-6"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
+  const nameEl = document.getElementById("permissions-modal-employee-name");
+  if (nameEl) nameEl.innerText = `${employeeName} — rôle ${employeeRole}`;
+  
+  const modal = document.getElementById("permissions-modal");
+  if (modal) modal.classList.remove("hidden");
+  
+  const checkList = document.getElementById("permissions-checklist");
+  if (checkList) checkList.innerHTML = '<div class="text-center text-slate-400 py-6"><i class="fa-solid fa-circle-notch fa-spin"></i></div>';
 
   await refreshPermissionsModal(employeeRole);
 }
@@ -1682,14 +1497,16 @@ async function refreshPermissionsModal(employeeRole) {
     renderPermissionsChecklist();
   } catch (e) {
     console.error("Erreur chargement accès personnalisés:", e);
-    document.getElementById("permissions-checklist").innerHTML =
-      '<div class="text-center text-red-400 py-6 text-xs">Erreur de chargement.</div>';
+    const checkList = document.getElementById("permissions-checklist");
+    if (checkList) checkList.innerHTML = '<div class="text-center text-red-400 py-6 text-xs">Erreur de chargement.</div>';
   }
 }
 
 function renderPermissionsOverridesList() {
   const section = document.getElementById("permissions-overrides-section");
   const list = document.getElementById("permissions-overrides-list");
+  if (!section || !list) return;
+
   if (permModalState.overrides.length === 0) {
     section.classList.add("hidden");
     return;
@@ -1713,6 +1530,7 @@ function renderPermissionsOverridesList() {
 
 function renderPermissionsChecklist() {
   const container = document.getElementById("permissions-checklist");
+  if (!container) return;
   const keys = Object.keys(permModalState.rolePermissions).sort();
 
   container.innerHTML = keys.map((key) => {
@@ -1830,35 +1648,40 @@ export async function revokePermissionOverride(id) {
 }
 
 export function closePermissionsModal() {
-  document.getElementById("permissions-modal").classList.add("hidden");
+  const modal = document.getElementById("permissions-modal");
+  if (modal) modal.classList.add("hidden");
 }
 
 export async function submitUpdate(e) {
   e.preventDefault();
-  const id = document.getElementById("edit-id-hidden").value;
+  const hiddenId = document.getElementById("edit-id-hidden");
+  const id = hiddenId ? hiddenId.value : "";
+  if (!id) return;
 
-  // 1. Récupération des valeurs actuelles du formulaire
-  const newVal = {
-    statut: document.getElementById("edit-statut").value,
-    role: document.getElementById("edit-role").value,
-    dept: document.getElementById("edit-dept").value,
-    limit: document.getElementById("edit-type-contrat").value,
-    employee_type: document.getElementById("edit-type").value,
-    secteur: document.getElementById("edit-secteur").value,
-    perimetre_lieux: document.getElementById("edit-perimetre-lieux").value,
-    contenu_pointage: document.getElementById("edit-contenu-pointage").value,
-    rythme: document.getElementById("edit-rythme").value,
-    start_date: document.getElementById("edit-start-date").value,
-    manager_id: document.getElementById("edit-manager").value || null,
-    salaire: document.getElementById("edit-salaire-fixe").value,
-    transport: document.getElementById("edit-indemnite-transport").value,
-    logement: document.getElementById("edit-indemnite-logement").value,
+  const getVal = (fieldId) => {
+    const el = document.getElementById(fieldId);
+    return el ? el.value : "";
   };
 
-  // 2. Construction de l'objet de modifications (Delta)
+  const newVal = {
+    statut: getVal("edit-statut"),
+    role: getVal("edit-role"),
+    dept: getVal("edit-dept"),
+    limit: getVal("edit-type-contrat"),
+    employee_type: getVal("edit-type"),
+    secteur: getVal("edit-secteur"),
+    perimetre_lieux: getVal("edit-perimetre-lieux"),
+    contenu_pointage: getVal("edit-contenu-pointage"),
+    rythme: getVal("edit-rythme"),
+    start_date: getVal("edit-start-date"),
+    manager_id: getVal("edit-manager") || null,
+    salaire: getVal("edit-salaire-fixe"),
+    transport: getVal("edit-indemnite-transport"),
+    logement: getVal("edit-indemnite-logement"),
+  };
+
   const changes = {};
 
-  // Comparaison des champs de base
   if (newVal.statut !== AppState.currentEditingOriginal.statut)
     changes.statut = newVal.statut;
   if (newVal.role !== AppState.currentEditingOriginal.role)
@@ -1876,10 +1699,6 @@ export async function submitUpdate(e) {
   if (newVal.rythme !== AppState.currentEditingOriginal.rythme)
     changes.rythme = newVal.rythme;
 
-  // Coordonnées de paiement, en delta comme le reste. Le bloc est absent si
-  // l'utilisateur n'a pas can_see_payment_details : dans ce cas on ne touche
-  // à rien plutôt que d'effacer des coordonnées qu'on n'avait pas le droit
-  // de voir.
   if (document.getElementById("edit-mode_paiement_defaut") && window.collectPaymentFields) {
     const paiement = window.collectPaymentFields("edit");
     if (paiement.erreurs.length > 0) {
@@ -1894,13 +1713,11 @@ export async function submitUpdate(e) {
     });
   }
 
-  // Comparaison du manager (attention au type null/string)
   if (newVal.manager_id != AppState.currentEditingOriginal.manager_id) {
     changes.manager_id = newVal.manager_id;
   }
 
-  // Gestion de la hiérarchie (Scope)
-  const scopeVal = document.getElementById("edit-scope").value;
+  const scopeVal = getVal("edit-scope");
   const scopeArray = scopeVal ? scopeVal.split(",").map((s) => s.trim()) : [];
   if (
     JSON.stringify(scopeArray) !==
@@ -1909,8 +1726,6 @@ export async function submitUpdate(e) {
     changes.scope = JSON.stringify(scopeArray);
   }
 
-  // --- LOGIQUE CONTRAT ---
-  // Si la date de début ou la durée change, on signale qu'il faut recalculer la date de fin
   const originalDate = convertToInputDate(AppState.currentEditingOriginal.date);
   if (
     newVal.start_date !== originalDate ||
@@ -1918,39 +1733,27 @@ export async function submitUpdate(e) {
   ) {
     changes.start_date = newVal.start_date;
     changes.limit = newVal.limit;
-    changes.recalculate_contract = "true"; // Signal pour le serveur
+    changes.recalculate_contract = "true";
   }
 
-  // --- LOGIQUE FINANCES ---
-  if (
-    parseFloat(newVal.salaire) !==
-    parseFloat(AppState.currentEditingOriginal.salaire_base_fixe)
-  )
+  if (parseFloat(newVal.salaire) !== parseFloat(AppState.currentEditingOriginal.salaire_base_fixe))
     changes.salaire_brut_fixe = newVal.salaire;
 
-  if (
-    parseFloat(newVal.transport) !==
-    parseFloat(AppState.currentEditingOriginal.indemnite_transport)
-  )
+  if (parseFloat(newVal.transport) !== parseFloat(AppState.currentEditingOriginal.indemnite_transport))
     changes.indemnite_transport = newVal.transport;
 
-  if (
-    parseFloat(newVal.logement) !==
-    parseFloat(AppState.currentEditingOriginal.indemnite_logement)
-  )
+  if (parseFloat(newVal.logement) !== parseFloat(AppState.currentEditingOriginal.indemnite_logement))
     changes.indemnite_logement = newVal.logement;
 
-  // Checkbox spéciale
-  const forceInit = document.getElementById("edit-init-check").checked;
+  const initCheck = document.getElementById("edit-init-check");
+  const forceInit = initCheck ? initCheck.checked : false;
 
-  // 3. SÉCURITÉ : Si rien n'a changé, on arrête
   if (Object.keys(changes).length === 0 && !forceInit) {
     Swal.fire("Info", "Aucune modification détectée.", "info");
     closeEditModal();
     return;
   }
 
-  // 4. ENVOI DES DONNÉES CIBLÉES
   Swal.fire({
     title: "Mise à jour...",
     text: "Synchronisation...",
@@ -1960,21 +1763,17 @@ export async function submitUpdate(e) {
 
   const params = new URLSearchParams({
     id: id,
-    agent: AppState.currentUser.nom,
+    agent: AppState.currentUser?.nom || "",
     force_init: forceInit,
-    ...changes, // On n'envoie que les clés présentes dans 'changes'
+    ...changes,
   });
 
   try {
     const response = await secureFetch(`${URL_UPDATE}?${params.toString()}`);
     if (response.ok) {
       closeEditModal();
-      await Swal.fire(
-        "Succès",
-        "Les modifications ont été enregistrées.",
-        "success",
-      );
-      refreshAllData(true);
+      await Swal.fire("Succès", "Les modifications ont été enregistrées.", "success");
+      if (typeof window.refreshAllData === "function") window.refreshAllData(true);
     } else {
       throw new Error("Erreur serveur lors de la mise à jour");
     }
@@ -1984,17 +1783,15 @@ export async function submitUpdate(e) {
 }
 
 export async function deleteEmployee(id) {
-  // 1. On cherche le nom de l'employé pour personnaliser l'alerte
-  const emp = AppState.employees.find((e) => e.id === id);
+  const emp = AppState.employees.find((e) => String(e.id) === String(id));
   const empName = emp ? emp.nom : "ce collaborateur";
 
-  // 2. Alerte de confirmation de sécurité
   const result = await Swal.fire({
     title: "Suppression Définitive",
     text: `Êtes-vous sûr de vouloir supprimer ${empName} ? Cette action effacera son profil, son historique et ses accès au système.`,
     icon: "warning",
     showCancelButton: true,
-    confirmButtonColor: "#ef4444", // Rouge
+    confirmButtonColor: "#ef4444",
     cancelButtonColor: "#64748b",
     confirmButtonText: "Oui, supprimer",
     cancelButtonText: "Annuler",
@@ -2008,23 +1805,17 @@ export async function deleteEmployee(id) {
     });
 
     try {
-      // 3. Appel au serveur via secureFetch pour envoyer le token
       const response = await secureFetch(
         `${SIRH_CONFIG.apiBaseUrl}/delete-employee`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: id, agent: AppState.currentUser.nom }),
+          body: JSON.stringify({ id: id, agent: AppState.currentUser?.nom || "" }),
         },
       );
 
       if (response.ok) {
-        Swal.fire(
-          "Supprimé !",
-          "Le collaborateur a été retiré de la base.",
-          "success",
-        );
-        // 4. On rafraîchit la liste immédiatement
+        Swal.fire("Supprimé !", "Le collaborateur a été retiré de la base.", "success");
         fetchData(true, 1);
       } else {
         const err = await response.json();
@@ -2044,7 +1835,6 @@ export async function openBulkManagerModal() {
 
   if (selectedIds.length === 0) return;
 
-  // On charge une liste large pour le select des managers potentiels
   try {
     const r = await secureFetch(`${URL_READ}?limit=500&status=Actif`);
     const result = await r.json();
@@ -2052,7 +1842,6 @@ export async function openBulkManagerModal() {
 
     let options = `<option value="">-- Aucun / Détacher --</option>`;
     potentialManagers.forEach((m) => {
-      // On évite de s'auto-sélectionner
       if (!selectedIds.includes(m.id)) {
         options += `<option value="${m.id}">${m.nom} (${m.poste})</option>`;
       }
@@ -2061,9 +1850,9 @@ export async function openBulkManagerModal() {
     const { value: managerId } = await Swal.fire({
       title: `Assigner ${selectedIds.length} personnes`,
       html: `
-                <p class="text-sm text-slate-500 mb-4">Choisissez le responsable hiérarchique direct (N+1).</p>
-                <select id="bulk-manager-select" class="swal2-input text-sm">${options}</select>
-            `,
+        <p class="text-sm text-slate-500 mb-4">Choisissez le responsable hiérarchique direct (N+1).</p>
+        <select id="bulk-manager-select" class="swal2-input text-sm">${options}</select>
+      `,
       showCancelButton: true,
       confirmButtonText: "Valider",
       confirmButtonColor: "#0f172a",
@@ -2087,17 +1876,14 @@ export async function openBulkManagerModal() {
 
       if (res.ok) {
         Swal.fire("Succès", "Hiérarchie mise à jour !", "success");
-        fetchData(true); // On rafraîchit la liste
-        document.getElementById("bulk-action-bar").classList.add("hidden");
+        fetchData(true);
+        const bar = document.getElementById("bulk-action-bar");
+        if (bar) bar.classList.add("hidden");
       }
     }
   } catch (e) {
     console.error(e);
-    Swal.fire(
-      "Erreur",
-      "Impossible de charger la liste ou de mettre à jour.",
-      "error",
-    );
+    Swal.fire("Erreur", "Impossible de charger la liste ou de mettre à jour.", "error");
   }
 }
 
@@ -2117,10 +1903,9 @@ export function toggleBulkActions() {
 }
 
 export async function generateDraftContract(id) {
-  const e = AppState.employees.find((x) => x.id === id);
+  const e = AppState.employees.find((x) => String(x.id) === String(id));
   if (!e) return;
 
-  // 1. Affichage d'un loader pro
   Swal.fire({
     title: "Génération du Brouillon...",
     text: "Conversion du modèle en PDF sécurisé...",
@@ -2131,37 +1916,26 @@ export async function generateDraftContract(id) {
   try {
     const token = localStorage.getItem("sirh_token");
 
-    // 2. Appel au serveur
     const response = await fetch(
       `${URL_CONTRACT_GENERATE}?id=${id}`,
       {
         method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       },
     );
 
     if (!response.ok) {
-      // Si le serveur renvoie une erreur (ex: modèle manquant)
-      const err = await response.json();
+      const err = await response.json().catch(() => ({}));
       throw new Error(err.error || "Erreur lors de la génération");
     }
 
-    // 3. RÉCUPÉRATION DU PDF (BLOB)
-    // On ne crée plus de lien <a>, on récupère le flux binaire
     const blob = await response.blob();
-
-    // 4. CRÉATION D'UNE URL VIRTUELLE
     const pdfUrl = window.URL.createObjectURL(blob);
 
-    // 5. AFFICHAGE DANS TON MODAL EXISTANT
-    // On ferme le loader et on appelle ta fonction de visualisation
     Swal.close();
-    viewDocument(pdfUrl, `Prévisualisation Contrat : ${e.nom}`);
-
-    // Note : On ne révoque pas l'URL immédiatement car l'iframe en a besoin pour afficher le PDF
-    // Elle sera nettoyée à la fermeture ou au prochain chargement.
+    if (typeof window.viewDocument === "function") {
+      window.viewDocument(pdfUrl, `Prévisualisation Contrat : ${e.nom}`);
+    }
   } catch (error) {
     console.error("Erreur Brouillon:", error);
     Swal.fire("Erreur", error.message, "error");
@@ -2169,39 +1943,44 @@ export async function generateDraftContract(id) {
 }
 
 export function openContractModal(id) {
-  document.getElementById("contract-id-hidden").value = id;
-  document.getElementById("contract-modal").classList.remove("hidden");
+  const hiddenId = document.getElementById("contract-id-hidden");
+  if (hiddenId) hiddenId.value = id;
+  const modal = document.getElementById("contract-modal");
+  if (modal) modal.classList.remove("hidden");
 
-  // Initialisation du pad de signature sur le canvas
   const canvas = document.getElementById("signature-pad");
-  AppState.signaturePad = new SignaturePad(canvas, {
-    backgroundColor: "rgba(255, 255, 255, 0)", // Fond transparent
-    penColor: "rgb(0, 0, 0)", // Encre noire
-  });
+  if (canvas && typeof SignaturePad !== "undefined") {
+    AppState.signaturePad = new SignaturePad(canvas, {
+      backgroundColor: "rgba(255, 255, 255, 0)",
+      penColor: "rgb(0, 0, 0)",
+    });
 
-  // Cette partie est CRUCIALE pour que la signature soit précise sur mobile (Retina display)
-  const ratio = Math.max(window.devicePixelRatio || 1, 1);
-  canvas.width = canvas.offsetWidth * ratio;
-  canvas.height = canvas.offsetHeight * ratio;
-  canvas.getContext("2d").scale(ratio, ratio);
-  AppState.signaturePad.clear(); // On vide le cadre au cas où
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+    canvas.width = canvas.offsetWidth * ratio;
+    canvas.height = canvas.offsetHeight * ratio;
+    canvas.getContext("2d").scale(ratio, ratio);
+    AppState.signaturePad.clear();
+  }
 }
+
 export function closeContractModal() {
-  if (AppState.contractStream)
+  if (AppState.contractStream) {
     AppState.contractStream.getTracks().forEach((t) => t.stop());
-  document.getElementById("contract-modal").classList.add("hidden");
+    AppState.contractStream = null;
+  }
+  const modal = document.getElementById("contract-modal");
+  if (modal) modal.classList.add("hidden");
 }
 
 export function clearSignature() {
-  if (signaturePad) signaturePad.clear();
+  if (AppState.signaturePad) AppState.signaturePad.clear();
 }
 
 export function exportToCSV() {
-  if (AppState.employees.length === 0) {
+  if (!AppState.employees || AppState.employees.length === 0) {
     return Swal.fire("Erreur", "Aucune donnée à exporter", "warning");
   }
 
-  // 1. Définir les colonnes à exporter
   const headers = [
     "Matricule",
     "Nom Complet",
@@ -2214,39 +1993,31 @@ export function exportToCSV() {
     "Duree Contrat",
   ];
 
-  // 2. Préparer les données
-  let csvContent = headers.join(";") + "\n"; // Utilisation du point-virgule pour Excel France
+  let csvContent = headers.join(";") + "\n";
 
   AppState.employees.forEach((e) => {
     const row = [
-      e.id, // Index 0
-      e.nom, // Index 1
-      e.poste, // Index 2
-      e.dept, // Index 3
-      e.statut, // Index 4
-      e.email || "", // Index 5
-      e.telephone || "", // Index 6 (Le coupable)
-      e.date || "", // Index 7
-      e.limit, // Index 8
+      e.id,
+      e.nom,
+      e.poste,
+      e.dept,
+      e.statut,
+      e.email || "",
+      e.telephone || "",
+      e.date || "",
+      e.limit,
     ];
 
-    // Nettoyage des données et formatage forcé pour Excel
     const cleanRow = row.map((val, index) => {
-      let str = String(val).replace(/"/g, '""'); // Gère les guillemets internes
-
-      // PROTECTION : Si c'est le Matricule (0) ou le Téléphone (6)
-      // On ajoute \t (tabulation) au début pour forcer Excel à lire du TEXTE
+      let str = String(val || "").replace(/"/g, '""');
       if (index === 0 || index === 6) {
         return `"\t${str}"`;
       }
-
       return `"${str}"`;
     });
     csvContent += cleanRow.join(";") + "\n";
   });
 
-  // 3. Créer le fichier et le télécharger
-  // Utilisation du BOM UTF-8 (\ufeff) pour les accents et du Blob pour le binaire
   const blob = new Blob(["\ufeff" + csvContent], {
     type: "text/csv;charset=utf-8;",
   });
@@ -2273,19 +2044,16 @@ export function exportToCSV() {
 
 export async function submitSignedContract() {
   if (!AppState.signaturePad || AppState.signaturePad.isEmpty()) {
-    return Swal.fire(
-      "Attention",
-      "Veuillez signer avant de valider.",
-      "warning",
-    );
+    return Swal.fire("Attention", "Veuillez signer avant de valider.", "warning");
   }
 
-  const id = document.getElementById("contract-id-hidden").value;
+  const hiddenId = document.getElementById("contract-id-hidden");
+  const id = hiddenId ? hiddenId.value : "";
   const signatureBase64 = AppState.signaturePad.toDataURL();
 
   Swal.fire({
     title: "Signature en cours...",
-    text: "Incrustation dans le document Word...",
+    text: "Incrustation dans le document...",
     didOpen: () => Swal.showLoading(),
     allowOutsideClick: false,
   });
@@ -2297,29 +2065,27 @@ export async function submitSignedContract() {
       body: JSON.stringify({
         id: id,
         signature: signatureBase64,
-        agent: AppState.currentUser.nom,
+        agent: AppState.currentUser?.nom || "",
       }),
     });
 
-    const result = await r.json(); // On récupère le JSON, pas le texte HTML
+    const result = await r.json();
 
     if (r.ok && result.status === "success") {
       closeContractModal();
-
-      // Succès ! On propose de voir le fichier
       Swal.fire({
         icon: "success",
         title: "Contrat Signé !",
-        text: "Le document Word a été généré avec votre signature.",
+        text: "Le document a été généré avec votre signature.",
         showCancelButton: true,
         confirmButtonText: "📥 Télécharger",
         cancelButtonText: "Fermer",
       }).then((choice) => {
-        if (choice.isConfirmed) {
+        if (choice.isConfirmed && result.url) {
           window.open(result.url, "_blank");
         }
       });
-      refreshAllData(true);
+      if (typeof window.refreshAllData === "function") window.refreshAllData(true);
     } else {
       throw new Error(result.error || "Erreur lors de la signature");
     }
@@ -2347,125 +2113,75 @@ export async function triggerManualContractUpload(employeeId) {
   if (file) {
     Swal.fire({
       title: "Envoi en cours...",
-      text: "Le fichier est en cours d'archivage dans Airtable",
+      text: "Archivage du document...",
       allowOutsideClick: false,
       didOpen: () => Swal.showLoading(),
     });
 
-    // Préparation du FormData
     const fd = new FormData();
     fd.append("id", employeeId);
-    fd.append("contract_file", file); // Le fichier binaire
+    fd.append("contract_file", file);
     fd.append("mode", "manual_scan");
-    fd.append("agent", AppState.currentUser.nom);
+    fd.append("agent", AppState.currentUser?.nom || "");
 
     try {
-      // UTILISATION DE secureFetch POUR ENVOYER LE TOKEN
       const response = await secureFetch(URL_UPLOAD_SIGNED_CONTRACT, {
         method: "POST",
         body: fd,
-        // Note : On ne définit PAS de headers ici,
-        // secureFetch s'en occupe et le navigateur gère le "multipart/form-data"
       });
 
       if (response.ok) {
-        Swal.fire(
-          "Succès !",
-          "Le contrat scanné a été enregistré avec succès.",
-          "success",
-        );
-        refreshAllData();
+        Swal.fire("Succès !", "Le contrat scanné a été enregistré avec succès.", "success");
+        if (typeof window.refreshAllData === "function") window.refreshAllData();
       } else {
-        // Si on arrive ici, secureFetch a déjà levé une erreur normalement
         throw new Error("Le serveur a répondu avec une erreur.");
       }
     } catch (error) {
       console.error("Erreur Upload:", error);
-      Swal.fire(
-        "Échec",
-        "Impossible d'envoyer le fichier : " + error.message,
-        "error",
-      );
+      Swal.fire("Échec", "Impossible d'envoyer le fichier : " + error.message, "error");
     }
   }
 }
 
 export async function downloadMyBadge() {
-  // 1. Sécurité : Vérifier que la liste n'est pas vide
   if (!AppState.employees || AppState.employees.length === 0) {
     return Swal.fire("Patientez", "Le système charge vos données...", "info");
   }
 
-  // 2. LOGIQUE DE RECHERCHE IDENTIQUE À loadMyProfile (qui fonctionne chez toi)
-  const cleanUser = AppState.currentUser.nom
-    .toLowerCase()
-    .replace(/[\.-_]/g, " ")
-    .trim();
-
+  const cleanUser = (AppState.currentUser?.nom || "").toLowerCase().replace(/[\.-_]/g, " ").trim();
   let myData = AppState.employees.find((e) => {
-    const cleanEmp = e.nom
-      .toLowerCase()
-      .replace(/[\.-_]/g, " ")
-      .trim();
+    const cleanEmp = (e.nom || "").toLowerCase().replace(/[\.-_]/g, " ").trim();
     return cleanEmp.includes(cleanUser) || cleanUser.includes(cleanEmp);
   });
 
-  // 3. Fallback par ID au cas où
-  if (!myData && AppState.currentUser.id) {
-    myData = AppState.employees.find(
-      (e) => String(e.id) === String(AppState.currentUser.id),
-    );
+  if (!myData && AppState.currentUser?.id) {
+    myData = AppState.employees.find((e) => String(e.id) === String(AppState.currentUser.id));
   }
 
-  // 4. Si on ne trouve toujours rien
   if (!myData) {
-    console.error(
-      "Badge Error: Impossible de trouver cet l'employé",
-      AppState.currentUser.nom,
-    );
-    return Swal.fire(
-      "Erreur",
-      "Impossible de localiser votre fiche employé pour générer le badge.",
-      "error",
-    );
+    return Swal.fire("Erreur", "Impossible de localiser votre fiche employé.", "error");
   }
 
-  // 5. Lancement de la génération
   const token = localStorage.getItem("sirh_token");
-  Swal.fire({
-    title: "Génération du badge...",
-    text: "Veuillez patienter",
-    didOpen: () => Swal.showLoading(),
-    allowOutsideClick: false,
-  });
+  Swal.fire({ title: "Génération du badge...", text: "Veuillez patienter", didOpen: () => Swal.showLoading(), allowOutsideClick: false });
 
   try {
-    // On formate la photo pour qu'elle soit visible sur le badge
     const photoUrl = myData.photo ? formatGoogleLink(myData.photo) : "";
+    const url = `${URL_BADGE_GEN}?id=${encodeURIComponent(myData.id)}&nom=${encodeURIComponent(myData.nom)}&poste=${encodeURIComponent(myData.poste)}&photo=${encodeURIComponent(photoUrl)}&agent=${encodeURIComponent(AppState.currentUser?.nom || "")}`;
 
-    // Construction de l'URL vers ton API de badge
-    const url = `${URL_BADGE_GEN}?id=${encodeURIComponent(myData.id)}&nom=${encodeURIComponent(myData.nom)}&poste=${encodeURIComponent(myData.poste)}&photo=${encodeURIComponent(photoUrl)}&agent=${encodeURIComponent(AppState.currentUser.nom)}`;
-
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!response.ok) throw new Error("Erreur serveur");
 
     const htmlContent = await response.text();
     Swal.close();
 
-    // Ouverture de la fenêtre d'impression
     const w = window.open("", "_blank", "width=450,height=700");
     if (w) {
       w.document.open();
       w.document.write(htmlContent);
       w.document.close();
     } else {
-      Swal.fire(
-        "Pop-up bloqué",
-        "Veuillez autoriser les fenêtres surgissantes pour voir votre badge.",
-        "warning",
-      );
+      Swal.fire("Pop-up bloqué", "Veuillez autoriser les fenêtres surgissantes pour voir votre badge.", "warning");
     }
   } catch (error) {
     console.error(error);
@@ -2474,52 +2190,29 @@ export async function downloadMyBadge() {
 }
 
 export async function printBadge(id) {
-  const e = AppState.employees.find((x) => x.id === id);
+  const e = AppState.employees.find((x) => String(x.id) === String(id));
   if (!e) return;
 
-  // On récupère le token
   const token = localStorage.getItem("sirh_token");
-
   Swal.fire({ title: "Génération...", didOpen: () => Swal.showLoading() });
 
   try {
-    // On construit l'URL
-    const url = `${URL_BADGE_GEN}?id=${encodeURIComponent(id)}&nom=${encodeURIComponent(e.nom)}&poste=${encodeURIComponent(e.poste)}&photo=${encodeURIComponent(formatGoogleLink(e.photo) || "")}&agent=${encodeURIComponent(AppState.currentUser.nom)}`;
-
-    // AU LIEU DE FAIRE window.open(url)...
-    // On va chercher le contenu (le code HTML du badge)
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
+    const url = `${URL_BADGE_GEN}?id=${encodeURIComponent(id)}&nom=${encodeURIComponent(e.nom)}&poste=${encodeURIComponent(e.poste)}&photo=${encodeURIComponent(formatGoogleLink(e.photo) || "")}&agent=${encodeURIComponent(AppState.currentUser?.nom || "")}`;
+    const response = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!response.ok) throw new Error("Erreur génération");
 
-    // On récupère le texte HTML
     const htmlContent = await response.text();
-
-    // On ferme le loader
     Swal.close();
 
-    // On ouvre une fenêtre vide
     const w = window.open("", "_blank", "width=400,height=600");
-
-    // On écrit le HTML dedans manuellement
-    w.document.open();
-    w.document.write(htmlContent);
-    w.document.close();
-
-    // Petit délai pour laisser les images charger avant d'imprimer (si le HTML contient un script d'impression auto, ça marchera aussi)
-    w.onload = function () {
-      // Optionnel : forcer l'impression si le HTML ne le fait pas déjà
-      // w.print();
-    };
+    if (w) {
+      w.document.open();
+      w.document.write(htmlContent);
+      w.document.close();
+    }
   } catch (error) {
     console.error(error);
-    Swal.fire(
-      "Erreur",
-      "Impossible de générer le badge : " + error.message,
-      "error",
-    );
+    Swal.fire("Erreur", "Impossible de générer le badge : " + error.message, "error");
   }
 }
 
@@ -2540,54 +2233,25 @@ export function openFormEditor() {
 }
 
 export function copyFormLink() {
-  navigator.clipboard
-    .writeText(AIRTABLE_FORM_PUBLIC_LINK)
-    .then(() => {
-      const Toast = Swal.mixin({
-        toast: true,
-        position: "top-end",
-        showConfirmButton: false,
-        timer: 3000,
-        timerProgressBar: true,
-      });
-
-      Toast.fire({
-        icon: "success",
-        title: "Lien copié !",
-        text: "Vous pouvez maintenant l'envoyer au candidat.",
-      });
-    })
-    .catch((err) => {
-      Swal.fire(
-        "Erreur",
-        "Impossible de copier le lien automatiquement.",
-        "error",
-      );
+  navigator.clipboard.writeText(AIRTABLE_FORM_PUBLIC_LINK).then(() => {
+    const Toast = Swal.mixin({
+      toast: true,
+      position: "top-end",
+      showConfirmButton: false,
+      timer: 3000,
     });
+    Toast.fire({ icon: "success", title: "Lien copié !" });
+  }).catch(() => {
+    Swal.fire("Erreur", "Impossible de copier le lien automatiquement.", "error");
+  });
 }
 
 export async function handleCandidateAction(id, action) {
   const conf = {
-    VALIDER_POUR_ENTRETIEN: {
-      t: "Inviter en entretien ?",
-      c: "#2563eb",
-      txt: "Un email d'invitation sera envoyé automatiquement.",
-    },
-    REFUS_IMMEDIAT: {
-      t: "Refuser la candidature ?",
-      c: "#ef4444",
-      txt: "Un email de refus immédiat sera envoyé.",
-    },
-    ACCEPTER_EMBAUCHE: {
-      t: "Confirmer l'embauche ?",
-      c: "#10b981",
-      txt: "Cela créera le profil employé et enverra les accès.",
-    },
-    REFUS_APRES_ENTRETIEN: {
-      t: "Refuser après entretien ?",
-      c: "#f97316",
-      txt: "Un email de refus personnalisé sera envoyé.",
-    },
+    VALIDER_POUR_ENTRETIEN: { t: "Inviter en entretien ?", c: "#2563eb", txt: "Un email d'invitation sera envoyé." },
+    REFUS_IMMEDIAT: { t: "Refuser la candidature ?", c: "#ef4444", txt: "Un email de refus immédiat sera envoyé." },
+    ACCEPTER_EMBAUCHE: { t: "Confirmer l'embauche ?", c: "#10b981", txt: "Cela créera le profil employé et enverra les accès." },
+    REFUS_APRES_ENTRETIEN: { t: "Refuser après entretien ?", c: "#f97316", txt: "Un email de refus personnalisé sera envoyé." },
   }[action];
 
   const res = await Swal.fire({
@@ -2601,37 +2265,31 @@ export async function handleCandidateAction(id, action) {
   });
 
   if (res.isConfirmed) {
-    let employeeType = "OFFICE"; // Valeur par défaut
+    let employeeType = "OFFICE";
     let chosenDept = "À définir";
 
-    // --- SI EMBAUCHE : ON DEMANDE LE TYPE ET LE DEPARTEMENT ---
     if (action === "ACCEPTER_EMBAUCHE") {
-      const depRes = await secureFetch(
-        `${SIRH_CONFIG.apiBaseUrl}/list-departments`,
-      );
+      const depRes = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/list-departments`);
       const depts = await depRes.json();
-      let deptOptions = depts
-        .map((d) => `<option value="${d.code}">${d.label}</option>`)
-        .join("");
+      let deptOptions = depts.map((d) => `<option value="${d.code}">${d.label}</option>`).join("");
 
       const { value: selection } = await Swal.fire({
         title: "Paramètres d'embauche",
         html: `
-                    <div class="text-left">
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Type d'activité</label>
-                        <select id="swal-emp-type" class="swal2-input !mt-0">
-                            <option value="OFFICE">🏢 Bureau (Fixe)</option>
-                            <option value="FIXED">🏠 Agent Site (Fixe)</option>
-                            <option value="MOBILE">🚗 Délégué (Nomade)</option>
-                        </select>
-
-                        <label class="block text-[10px] font-black text-slate-400 uppercase mt-4 mb-1">Affectation Département</label>
-                        <select id="swal-dept" class="swal2-input !mt-0">
-                            <option value="">-- Sélectionner --</option>
-                            ${deptOptions}
-                        </select>
-                    </div>
-                `,
+          <div class="text-left">
+              <label class="block text-[10px] font-black text-slate-400 uppercase mb-1">Type d'activité</label>
+              <select id="swal-emp-type" class="swal2-input !mt-0">
+                  <option value="OFFICE">🏢 Bureau (Fixe)</option>
+                  <option value="FIXED">🏠 Agent Site (Fixe)</option>
+                  <option value="MOBILE">🚗 Délégué (Nomade)</option>
+              </select>
+              <label class="block text-[10px] font-black text-slate-400 uppercase mt-4 mb-1">Affectation Département</label>
+              <select id="swal-dept" class="swal2-input !mt-0">
+                  <option value="">-- Sélectionner --</option>
+                  ${deptOptions}
+              </select>
+          </div>
+        `,
         focusConfirm: false,
         showCancelButton: true,
         confirmButtonColor: "#10b981",
@@ -2646,18 +2304,12 @@ export async function handleCandidateAction(id, action) {
         },
       });
 
-      if (!selection) return; // Annulation
+      if (!selection) return;
       employeeType = selection.employeeType;
       chosenDept = selection.department;
     }
 
-    // Affichage du loader
-    Swal.fire({
-      title: "Action en cours...",
-      text: "Mise à jour du dossier...",
-      allowOutsideClick: false,
-      didOpen: () => Swal.showLoading(),
-    });
+    Swal.fire({ title: "Action en cours...", text: "Mise à jour du dossier...", allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
     try {
       const response = await secureFetch(URL_CANDIDATE_ACTION, {
@@ -2666,14 +2318,13 @@ export async function handleCandidateAction(id, action) {
         body: JSON.stringify({
           id: id,
           action: action,
-          agent: AppState.currentUser.nom,
+          agent: AppState.currentUser?.nom || "",
           employee_type: employeeType,
           departement: chosenDept,
         }),
       });
 
       const result = await response.json();
-
       if (result && result.status === "success") {
         Swal.fire("Succès", "Action effectuée avec succès.", "success");
         fetchCandidates();
@@ -2688,11 +2339,9 @@ export async function handleCandidateAction(id, action) {
 }
 
 export function showCandidateDocs(id) {
-  // 1. Récupération du candidat complet depuis la mémoire de l'app
-  const c = AppState.currentCandidates.find((cand) => String(cand.id) === String(id));
+  const c = AppState.currentCandidates?.find((cand) => String(cand.id) === String(id));
   if (!c) return Swal.fire('Erreur', 'Dossier introuvable', 'error');
 
-  // 2. Préparation des données textuelles
   const nom = c.nom_complet || "Candidat";
   const poste = c.poste_vise || "Non précisé";
   const email = c.email || "Non renseigné";
@@ -2703,7 +2352,6 @@ export function showCandidateDocs(id) {
   const pretentions = c.pretentions ? new Intl.NumberFormat('fr-FR').format(c.pretentions) + ' CFA' : "Non précisées";
   const dateN = c.date_naissance ? new Date(c.date_naissance).toLocaleDateString('fr-FR') : "Non renseignée";
 
-  // 3. Extraction sécurisée des URLs de documents
   const getUrl = (u) => (u && u !== "null" && u.length > 5) ? u : null;
   
   const docs = [
@@ -2714,7 +2362,6 @@ export function showCandidateDocs(id) {
     { id: "att", label: "Attestation", url: getUrl(c.attestation_url), icon: "fa-file-invoice", color: "orange" },
   ];
 
-  // --- COLONNE GAUCHE (Menu) ---
   let buttonsHtml = '<div class="flex flex-col gap-2">';
   let firstDocUrl = null;
   let hasDocs = false;
@@ -2724,21 +2371,20 @@ export function showCandidateDocs(id) {
       hasDocs = true;
       if (!firstDocUrl) firstDocUrl = d.url;
       buttonsHtml += `
-            <button onclick="changePreview('${d.url}', this)" 
-                class="doc-btn w-full flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all text-left group shadow-sm">
-                <div class="w-8 h-8 shrink-0 rounded-lg bg-${d.color}-50 flex items-center justify-center text-${d.color}-600 group-hover:scale-110 transition-transform">
-                    <i class="fa-solid ${d.icon} text-sm"></i>
-                </div>
-                <div class="overflow-hidden flex-1 min-w-0">
-                    <p class="text-[8px] font-black text-slate-400 uppercase tracking-wide">DOCUMENT</p>
-                    <p class="text-xs font-bold text-slate-700 truncate">${d.label}</p>
-                </div>
-            </button>`;
+        <button onclick="changePreview('${d.url}', this)" 
+            class="doc-btn w-full flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 transition-all text-left group shadow-sm">
+            <div class="w-8 h-8 shrink-0 rounded-lg bg-${d.color}-50 flex items-center justify-center text-${d.color}-600 group-hover:scale-110 transition-transform">
+                <i class="fa-solid ${d.icon} text-sm"></i>
+            </div>
+            <div class="overflow-hidden flex-1 min-w-0">
+                <p class="text-[8px] font-black text-slate-400 uppercase tracking-wide">DOCUMENT</p>
+                <p class="text-xs font-bold text-slate-700 truncate">${d.label}</p>
+            </div>
+        </button>`;
     }
   });
   buttonsHtml += "</div>";
 
-  // --- LOGIQUE D'AFFICHAGE ---
   window.changePreview = function (url, btn) {
     document.querySelectorAll(".doc-btn").forEach((b) => {
       b.classList.remove("ring-2", "ring-blue-500", "bg-blue-50/50");
@@ -2781,7 +2427,6 @@ export function showCandidateDocs(id) {
     }
   };
 
-  // --- HTML SWEETALERT ---
   Swal.fire({
     title: null,
     width: "1150px",
@@ -2790,79 +2435,69 @@ export function showCandidateDocs(id) {
     showCloseButton: true,
     customClass: { popup: "rounded-[2rem] overflow-hidden viewer-modal", htmlContainer: "!m-0" },
     html: `
-        <div class="flex flex-col md:flex-row h-[650px] text-left">
-            
-            <!-- GAUCHE : INFOS DOSSIER (35%) -->
-            <div class="w-full md:w-[35%] p-8 border-r border-slate-100 overflow-y-auto custom-scroll bg-white">
-                <div class="mb-6">
-                    <p class="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Candidat</p>
-                    <h2 class="text-2xl font-black text-slate-800 leading-tight mb-2">${nom}</h2>
-                    <span class="inline-block bg-slate-900 text-white text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-wide">
-                        ${poste}
-                    </span>
-                </div>
-
-                <!-- BLOC COORDONNÉES -->
-                <div class="space-y-3 mb-8">
-                    <div class="flex items-center gap-3 text-xs text-slate-600">
-                        <i class="fa-solid fa-envelope w-4 text-slate-400"></i> <span class="truncate">${email}</span>
-                    </div>
-                    <div class="flex items-center gap-3 text-xs text-slate-600">
-                        <i class="fa-solid fa-phone w-4 text-slate-400"></i> <b>${tel}</b>
-                    </div>
-                    <div class="flex items-center gap-3 text-xs text-slate-600">
-                        <i class="fa-solid fa-location-dot w-4 text-slate-400"></i> ${adresse}
-                    </div>
-                    <div class="flex items-center gap-3 text-xs text-slate-600">
-                        <i class="fa-solid fa-cake-candles w-4 text-slate-400"></i> Né(e) le ${dateN}
-                    </div>
-                </div>
-
-                <!-- BLOC CRITÈRES PRO -->
-                <div class="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4 mb-8">
-                    <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Évaluation Profil</p>
-                    <div class="flex justify-between border-b border-slate-200 pb-2">
-                        <span class="text-xs text-slate-500">Expérience</span>
-                        <span class="text-xs font-bold text-slate-800">${exp}</span>
-                    </div>
-                    <div class="flex justify-between border-b border-slate-200 pb-2">
-                        <span class="text-xs text-slate-500">Disponibilité</span>
-                        <span class="text-xs font-bold text-slate-800">${dispo}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-xs text-slate-500">Prétentions</span>
-                        <span class="text-xs font-black text-emerald-600">${pretentions}</span>
-                    </div>
-                </div>
-
-                <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Documents joints</p>
-                ${buttonsHtml}
-
-                <div class="mt-8">
-                    <button onclick="Swal.close()" class="w-full py-3 rounded-xl bg-slate-100 text-slate-500 font-bold text-xs hover:bg-slate-200 transition-all uppercase tracking-widest">
-                        Fermer le dossier
-                    </button>
-                </div>
-            </div>
-
-            <!-- DROITE : APERÇU (65%) -->
-            <div id="preview-container" class="flex-1 bg-slate-900 relative flex flex-col items-center shadow-inner overflow-x-hidden">
-                ${hasDocs ? `
-                    <div class="absolute top-4 right-4 z-10 sticky">
-                        <a id="external-link-btn" href="${firstDocUrl}" target="_blank" class="bg-white/90 backdrop-blur text-slate-700 px-4 py-2 rounded-xl text-[10px] font-black shadow-xl hover:text-blue-600 transition-all flex items-center gap-2">
-                            <i class="fa-solid fa-up-right-from-square"></i> Plein écran
-                        </a>
-                    </div>
-                    <iframe id="doc-viewer-frame" src="" class="w-full h-full bg-white hidden" frameborder="0"></iframe>
-                    <img id="doc-viewer-img" class="w-full h-auto min-h-full bg-black/5 hidden object-top">
-                ` : `
-                    <div class="h-full flex flex-col items-center justify-center text-slate-500">
-                        <i class="fa-solid fa-folder-open text-6xl opacity-20 mb-4"></i>
-                        <p class="text-sm font-bold uppercase tracking-widest">Dossier vide</p>
-                    </div>
-                `}
-            </div>
-        </div>`,
+      <div class="flex flex-col md:flex-row h-[650px] text-left">
+          <div class="w-full md:w-[35%] p-8 border-r border-slate-100 overflow-y-auto custom-scroll bg-white">
+              <div class="mb-6">
+                  <p class="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Candidat</p>
+                  <h2 class="text-2xl font-black text-slate-800 leading-tight mb-2">${nom}</h2>
+                  <span class="inline-block bg-slate-900 text-white text-[10px] font-black px-3 py-1 rounded-lg uppercase tracking-wide">
+                      ${poste}
+                  </span>
+              </div>
+              <div class="space-y-3 mb-8">
+                  <div class="flex items-center gap-3 text-xs text-slate-600">
+                      <i class="fa-solid fa-envelope w-4 text-slate-400"></i> <span class="truncate">${email}</span>
+                  </div>
+                  <div class="flex items-center gap-3 text-xs text-slate-600">
+                      <i class="fa-solid fa-phone w-4 text-slate-400"></i> <b>${tel}</b>
+                  </div>
+                  <div class="flex items-center gap-3 text-xs text-slate-600">
+                      <i class="fa-solid fa-location-dot w-4 text-slate-400"></i> ${adresse}
+                  </div>
+                  <div class="flex items-center gap-3 text-xs text-slate-600">
+                      <i class="fa-solid fa-cake-candles w-4 text-slate-400"></i> Né(e) le ${dateN}
+                  </div>
+              </div>
+              <div class="bg-slate-50 p-5 rounded-2xl border border-slate-100 space-y-4 mb-8">
+                  <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Évaluation Profil</p>
+                  <div class="flex justify-between border-b border-slate-200 pb-2">
+                      <span class="text-xs text-slate-500">Expérience</span>
+                      <span class="text-xs font-bold text-slate-800">${exp}</span>
+                  </div>
+                  <div class="flex justify-between border-b border-slate-200 pb-2">
+                      <span class="text-xs text-slate-500">Disponibilité</span>
+                      <span class="text-xs font-bold text-slate-800">${dispo}</span>
+                  </div>
+                  <div class="flex justify-between">
+                      <span class="text-xs text-slate-500">Prétentions</span>
+                      <span class="text-xs font-black text-emerald-600">${pretentions}</span>
+                  </div>
+              </div>
+              <p class="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Documents joints</p>
+              ${buttonsHtml}
+              <div class="mt-8">
+                  <button onclick="Swal.close()" class="w-full py-3 rounded-xl bg-slate-100 text-slate-500 font-bold text-xs hover:bg-slate-200 transition-all uppercase tracking-widest">
+                      Fermer le dossier
+                  </button>
+              </div>
+          </div>
+          <div id="preview-container" class="flex-1 bg-slate-900 relative flex flex-col items-center shadow-inner overflow-x-hidden">
+              ${hasDocs ? `
+                  <div class="absolute top-4 right-4 z-10 sticky">
+                      <a id="external-link-btn" href="${firstDocUrl}" target="_blank" class="bg-white/90 backdrop-blur text-slate-700 px-4 py-2 rounded-xl text-[10px] font-black shadow-xl hover:text-blue-600 transition-all flex items-center gap-2">
+                          <i class="fa-solid fa-up-right-from-square"></i> Plein écran
+                      </a>
+                  </div>
+                  <iframe id="doc-viewer-frame" src="" class="w-full h-full bg-white hidden" frameborder="0"></iframe>
+                  <img id="doc-viewer-img" class="w-full h-auto min-h-full bg-black/5 hidden object-top">
+              ` : `
+                  <div class="h-full flex flex-col items-center justify-center text-slate-500">
+                      <i class="fa-solid fa-folder-open text-6xl opacity-20 mb-4"></i>
+                      <p class="text-sm font-bold uppercase tracking-widest">Dossier vide</p>
+                  </div>
+              `}
+          </div>
+      </div>`,
     didOpen: () => {
       const firstBtn = document.querySelector(".doc-btn");
       if (firstBtn && firstDocUrl) window.changePreview(firstDocUrl, firstBtn);
@@ -2872,116 +2507,81 @@ export function showCandidateDocs(id) {
 
 export async function fetchCandidates() {
   const body = document.getElementById("candidates-body");
+  if (!body) return;
   body.innerHTML = '<tr><td colspan="4" class="p-8 text-center"><i class="fa-solid fa-circle-notch fa-spin text-blue-600 text-2xl"></i><p class="text-xs text-slate-400 mt-2 font-bold uppercase">Chargement des talents...</p></td></tr>';
 
   try {
-    const r = await secureFetch(`${URL_READ_CANDIDATES}?agent=${encodeURIComponent(AppState.currentUser.nom)}`);
+    const r = await secureFetch(`${URL_READ_CANDIDATES}?agent=${encodeURIComponent(AppState.currentUser?.nom || "")}`);
     let rawData = await r.json();
 
     let candidates = [];
     if (Array.isArray(rawData)) { candidates = rawData; } 
     else if (typeof rawData === "object" && rawData !== null) { candidates = rawData.data || rawData.items || [rawData]; }
 
-    // 💥 AJOUTE CETTE LIGNE ICI POUR GARDER LES INFOS EN MÉMOIRE
     AppState.currentCandidates = candidates; 
-
     body.innerHTML = "";
 
     if (candidates.length === 0) {
-      body.innerHTML =
-        '<tr><td colspan="4" class="p-8 text-center text-slate-400 font-bold bg-slate-50 rounded-xl border border-dashed border-slate-200">Aucune candidature en attente</td></tr>';
+      body.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-slate-400 font-bold bg-slate-50 rounded-xl border border-dashed border-slate-200">Aucune candidature en attente</td></tr>';
       return;
     }
 
     candidates.forEach((c) => {
-      // --- CORRECTION 1 : Utiliser nom_complet au lieu de nom ---
       const displayNom = c.nom_complet || c.Nom_complet || c.nom || "Inconnu";
-      const safeNom = encodeURIComponent(displayNom);
-
-      // --- CORRECTION 2 : Utiliser id au lieu de record_id ---
       const safeId = c.id;
-
-      const getAttachmentUrl = (attachment) => {
-        if (!attachment) return null;
-        if (Array.isArray(attachment) && attachment.length > 0)
-          return attachment[0].url;
-        if (typeof attachment === "string" && attachment.startsWith("http"))
-          return attachment;
-        return null;
-      };
-
-      const cvLink = getAttachmentUrl(c.cv_url); // c.cv_url correspond à votre colonne Supabase
-      const lMLink = getAttachmentUrl(c.lm_url);
-      const dipLink = getAttachmentUrl(c.diploma_url);
-      const attLink = getAttachmentUrl(c.attestation_url);
-      const idCardLink = getAttachmentUrl(c.id_card_url);
-
-      const safeCv = cvLink ? encodeURIComponent(cvLink) : "";
-      const safeLm = lMLink ? encodeURIComponent(lMLink) : "";
-      const safeDip = dipLink ? encodeURIComponent(dipLink) : "";
-      const safeAtt = attLink ? encodeURIComponent(attLink) : "";
-      const safeIdCard = idCardLink ? encodeURIComponent(idCardLink) : "";
 
       let stRaw = c.statut || "Nouveau";
       let stLogic = stRaw.toString().toLowerCase().trim();
 
       let badgeClass = "bg-slate-100 text-slate-600";
-
-      if (stLogic.includes("entretien"))
-        badgeClass = "bg-blue-100 text-blue-700";
-      else if (stLogic.includes("embauché") || stLogic.includes("validé"))
-        badgeClass = "bg-emerald-100 text-emerald-700";
+      if (stLogic.includes("entretien")) badgeClass = "bg-blue-100 text-blue-700";
+      else if (stLogic.includes("embauché") || stLogic.includes("validé")) badgeClass = "bg-emerald-100 text-emerald-700";
       else if (stLogic.includes("refus")) badgeClass = "bg-red-50 text-red-500";
-      else if (stLogic.includes("nouveau"))
-        badgeClass = "bg-yellow-50 text-yellow-700";
+      else if (stLogic.includes("nouveau")) badgeClass = "bg-yellow-50 text-yellow-700";
 
       const btnDocs = `
-                <button onclick="window.showCandidateDocs('${c.id}')" 
-                        class="p-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:text-blue-600 hover:border-blue-200 shadow-sm transition-all mr-2" title="Ouvrir le dossier complet">
-                    <i class="fa-solid fa-folder-open"></i>
-                </button>
-            `;
+        <button onclick="window.showCandidateDocs('${c.id}')" 
+                class="p-2 bg-white border border-slate-200 text-slate-600 rounded-lg hover:text-blue-600 hover:border-blue-200 shadow-sm transition-all mr-2" title="Ouvrir le dossier complet">
+            <i class="fa-solid fa-folder-open"></i>
+        </button>
+      `;
 
       let actionButtons = "";
-
-      // --- CORRECTION 3 : Utiliser safeId (qui est c.id) dans les appels de fonction ---
       if (stLogic === "nouveau" || !c.statut) {
         actionButtons = `
-                    ${btnDocs}
-                    <button onclick="window.handleCandidateAction('${safeId}', 'VALIDER_POUR_ENTRETIEN')" class="bg-blue-600 text-white hover:bg-blue-700 px-3 py-2 rounded-lg text-[10px] font-bold uppercase shadow-md shadow-blue-200 transition-all mr-2"><i class="fa-solid fa-calendar-check mr-1"></i> Entretien</button>
-                    <button onclick="window.handleCandidateAction('${safeId}', 'REFUS_IMMEDIAT')" class="bg-white border border-red-100 text-red-500 hover:bg-red-50 px-3 py-2 rounded-lg text-[10px] font-bold uppercase transition-all"><i class="fa-solid fa-xmark mr-1"></i> Refus</button>
-                `;
+          ${btnDocs}
+          <button onclick="window.handleCandidateAction('${safeId}', 'VALIDER_POUR_ENTRETIEN')" class="bg-blue-600 text-white hover:bg-blue-700 px-3 py-2 rounded-lg text-[10px] font-bold uppercase shadow-md shadow-blue-200 transition-all mr-2"><i class="fa-solid fa-calendar-check mr-1"></i> Entretien</button>
+          <button onclick="window.handleCandidateAction('${safeId}', 'REFUS_IMMEDIAT')" class="bg-white border border-red-100 text-red-500 hover:bg-red-50 px-3 py-2 rounded-lg text-[10px] font-bold uppercase transition-all"><i class="fa-solid fa-xmark mr-1"></i> Refus</button>
+        `;
       } else if (stLogic === "entretien") {
         actionButtons = `
-                    ${btnDocs}
-                    <button onclick="window.handleCandidateAction('${safeId}', 'ACCEPTER_EMBAUCHE')" class="bg-emerald-500 text-white hover:bg-emerald-600 px-3 py-2 rounded-lg text-[10px] font-bold uppercase shadow-md shadow-emerald-200 transition-all mr-2"><i class="fa-solid fa-user-plus mr-1"></i> Embaucher</button>
-                    <button onclick="window.handleCandidateAction('${safeId}', 'REFUS_APRES_ENTRETIEN')" class="bg-white border border-orange-100 text-orange-500 hover:bg-orange px-3 py-2 rounded-lg text-[10px] font-bold uppercase transition-all"><i class="fa-solid fa-thumbs-down mr-1"></i> Refus</button>
-                `;
+          ${btnDocs}
+          <button onclick="window.handleCandidateAction('${safeId}', 'ACCEPTER_EMBAUCHE')" class="bg-emerald-500 text-white hover:bg-emerald-600 px-3 py-2 rounded-lg text-[10px] font-bold uppercase shadow-md shadow-emerald-200 transition-all mr-2"><i class="fa-solid fa-user-plus mr-1"></i> Embaucher</button>
+          <button onclick="window.handleCandidateAction('${safeId}', 'REFUS_APRES_ENTRETIEN')" class="bg-white border border-orange-100 text-orange-500 hover:bg-orange px-3 py-2 rounded-lg text-[10px] font-bold uppercase transition-all"><i class="fa-solid fa-thumbs-down mr-1"></i> Refus</button>
+        `;
       } else {
         actionButtons = `${btnDocs} <span class="text-[10px] font-bold text-slate-300 italic">Dossier Traité</span>`;
       }
 
       body.innerHTML += `
-            <tr class="border-b hover:bg-slate-50 transition-colors group">
-                <td class="px-6 py-4">
-                    <div class="flex items-center gap-3">
-                        <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-500">${displayNom.charAt(0)}</div>
-                        <div>
-                            <!-- CORRECTION : Affichage de displayNom -->
-                            <div class="font-bold text-sm text-slate-800">${displayNom}</div>
-                            <div class="text-[10px] text-slate-400 font-mono">${c.email}</div>
-                        </div>
+        <tr class="border-b hover:bg-slate-50 transition-colors group">
+            <td class="px-6 py-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-500">${displayNom.charAt(0)}</div>
+                    <div>
+                        <div class="font-bold text-sm text-slate-800">${displayNom}</div>
+                        <div class="text-[10px] text-slate-400 font-mono">${c.email || ""}</div>
                     </div>
-                </td>
-                <!-- CORRECTION : poste_vise au lieu de poste -->
-                <td class="px-6 py-4 text-xs font-bold text-slate-600 uppercase tracking-tight">${c.poste_vise || "Non précisé"}</td>
-                <td class="px-6 py-4 text-center">
-                    <span class="${badgeClass} px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wide border border-black/5 shadow-sm">${stRaw}</span>
-                </td>
-                <td class="px-6 py-4 text-right flex justify-end items-center">
-                    ${actionButtons}
-                </td>
-            </tr>`;
+                </div>
+            </td>
+            <td class="px-6 py-4 text-xs font-bold text-slate-600 uppercase tracking-tight">${c.poste_vise || "Non précisé"}</td>
+            <td class="px-6 py-4 text-center">
+                <span class="${badgeClass} px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wide border border-black/5 shadow-sm">${stRaw}</span>
+            </td>
+            <td class="px-6 py-4 text-right flex justify-end items-center">
+                ${actionButtons}
+            </td>
+        </tr>`;
     });
   } catch (e) {
     console.error("Erreur Candidats:", e);
@@ -2990,27 +2590,19 @@ export async function fetchCandidates() {
 }
 
 export async function fetchMyActivityRecap() {
-  console.log("🚀 DÉBUT fetchMyActivityRecap (Filtrage Chronologique)");
-
   const visitContainer = document.getElementById("my-today-visits");
   const dailyContainer = document.getElementById("my-month-dailies");
   if (!visitContainer) return;
 
-  visitContainer.innerHTML =
-    '<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin text-blue-500"></i></div>';
+  visitContainer.innerHTML = '<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin text-blue-500"></i></div>';
   if (dailyContainer)
-    dailyContainer.innerHTML =
-      '<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin text-blue-500"></i></div>';
+    dailyContainer.innerHTML = '<div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin text-blue-500"></i></div>';
 
   try {
     const timeHack = Date.now();
     const [visRes, daiRes] = await Promise.all([
-      secureFetch(
-        `${SIRH_CONFIG.apiBaseUrl}/read-visit-reports?limit=1000&personal=true&t=${timeHack}`,
-      ),
-      secureFetch(
-        `${SIRH_CONFIG.apiBaseUrl}/read-daily-reports?limit=100&personal=true&t=${timeHack}`,
-      ),
+      secureFetch(`${SIRH_CONFIG.apiBaseUrl}/read-visit-reports?limit=1000&personal=true&t=${timeHack}`),
+      secureFetch(`${SIRH_CONFIG.apiBaseUrl}/read-daily-reports?limit=100&personal=true&t=${timeHack}`),
     ]);
 
     const allVisits = await visRes.json();
@@ -3019,74 +2611,60 @@ export async function fetchMyActivityRecap() {
     const now = new Date();
     const todayLocal = now.toLocaleDateString();
 
-    // --- CALCUL DE LA LIMITE DES 31 JOURS ---
     const thirtyOneDaysAgo = new Date();
     thirtyOneDaysAgo.setDate(now.getDate() - 31);
 
-    // 3. Filtrage Visites : Aujourd'hui seulement + Tri Récent en haut
     const myVisits = (allVisits.data || allVisits)
       .filter((v) => {
-        if (v.employee_id !== AppState.currentUser.id) return false;
-        const vDate = new Date(v.check_in).toLocaleDateString();
-        return vDate === todayLocal;
+        if (v.employee_id !== AppState.currentUser?.id) return false;
+        return new Date(v.check_in).toLocaleDateString() === todayLocal;
       })
-      .sort((a, b) => new Date(b.check_in) - new Date(a.check_in)); // Tri décroissant
+      .sort((a, b) => new Date(b.check_in) - new Date(a.check_in));
 
-    console.log(`✅ VISITES D'AUJOURD'HUI : ${myVisits.length}`);
-
-    // 4. Affichage Visites
     if (myVisits.length > 0) {
       visitContainer.innerHTML = myVisits
         .map(
           (v) => `
-                <div class="flex items-center justify-between p-3 bg-blue-50 rounded-xl border border-blue-100 mb-2 animate-fadeIn">
-                    <div>
-                        <p class="text-[10px] font-black text-blue-700 uppercase">${v.lieu_nom}</p>
-                        <p class="text-[9px] text-slate-400">
-                            ${new Date(v.check_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        </p>
-                    </div>
-                    <span class="text-[9px] font-bold bg-white px-2 py-1 rounded shadow-sm text-emerald-600">${v.outcome || "VU"}</span>
+            <div class="flex items-center justify-between p-3 bg-blue-50 rounded-xl border border-blue-100 mb-2 animate-fadeIn">
+                <div>
+                    <p class="text-[10px] font-black text-blue-700 uppercase">${v.lieu_nom}</p>
+                    <p class="text-[9px] text-slate-400">
+                        ${new Date(v.check_in).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                    </p>
                 </div>
-            `,
+                <span class="text-[9px] font-bold bg-white px-2 py-1 rounded shadow-sm text-emerald-600">${v.outcome || "VU"}</span>
+            </div>
+          `,
         )
         .join("");
     } else {
-      visitContainer.innerHTML =
-        '<div class="text-center py-6 border border-dashed rounded-xl"><p class="text-[10px] text-slate-400 italic">0 visite trouvée pour ce jour.</p></div>';
+      visitContainer.innerHTML = '<div class="text-center py-6 border border-dashed rounded-xl"><p class="text-[10px] text-slate-400 italic">0 visite trouvée pour ce jour.</p></div>';
     }
 
-    // 5. Filtrage Bilans : 31 derniers jours + Tri Récent en haut
     const myDailies = (allDailies.data || allDailies)
       .filter((d) => {
-        if (d.employee_id !== AppState.currentUser.id) return false;
-        const dDate = new Date(d.report_date);
-        return dDate >= thirtyOneDaysAgo; // Règle des 31 jours
+        if (d.employee_id !== AppState.currentUser?.id) return false;
+        return new Date(d.report_date) >= thirtyOneDaysAgo;
       })
-      .sort((a, b) => new Date(b.report_date) - new Date(a.report_date)); // Tri décroissant
+      .sort((a, b) => new Date(b.report_date) - new Date(a.report_date));
 
-    console.log(`✅ BILANS DES 31 JOURS : ${myDailies.length}`);
-
-    // Affichage Bilans
-    if (myDailies.length > 0) {
+    if (myDailies.length > 0 && dailyContainer) {
       dailyContainer.innerHTML = myDailies
         .map(
           (d) => `
-                <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2 animate-fadeIn">
-                    <p class="text-[9px] font-black text-slate-500 mb-1">${new Date(d.report_date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })}</p>
-                    <p class="text-[10px] text-slate-600 italic line-clamp-1">${d.summary}</p>
-                </div>
-            `,
+            <div class="p-3 bg-slate-50 rounded-xl border border-slate-100 mb-2 animate-fadeIn">
+                <p class="text-[9px] font-black text-slate-500 mb-1">${new Date(d.report_date).toLocaleDateString("fr-FR", { weekday: "short", day: "numeric", month: "short" })}</p>
+                <p class="text-[10px] text-slate-600 italic line-clamp-1">${d.summary}</p>
+            </div>
+          `,
         )
         .join("");
-    } else {
-      dailyContainer.innerHTML =
-        '<div class="text-center py-6 border border-dashed rounded-xl"><p class="text-[10px] text-slate-400 italic">0 bilan sur les 31 derniers jours.</p></div>';
+    } else if (dailyContainer) {
+      dailyContainer.innerHTML = '<div class="text-center py-6 border border-dashed rounded-xl"><p class="text-[10px] text-slate-400 italic">0 bilan sur les 31 derniers jours.</p></div>';
     }
   } catch (e) {
     console.error("❌ CRASH FETCH PROFIL:", e);
-    visitContainer.innerHTML =
-      '<p class="text-[10px] text-red-500">Erreur technique</p>';
+    if (visitContainer) visitContainer.innerHTML = '<p class="text-[10px] text-red-500">Erreur technique</p>';
   }
 }
 
@@ -3096,11 +2674,16 @@ export async function startContractCamera() {
       video: { facingMode: "environment" },
     });
     const v = document.getElementById("contract-video");
-    v.srcObject = AppState.contractStream;
-    v.classList.remove("hidden");
-    document.getElementById("contract-img-preview").classList.add("hidden");
-    document.getElementById("contract-icon").classList.add("hidden");
-    document.getElementById("btn-contract-capture").classList.remove("hidden");
+    if (v) {
+      v.srcObject = AppState.contractStream;
+      v.classList.remove("hidden");
+    }
+    const preview = document.getElementById("contract-img-preview");
+    if (preview) preview.classList.add("hidden");
+    const icon = document.getElementById("contract-icon");
+    if (icon) icon.classList.add("hidden");
+    const btn = document.getElementById("btn-contract-capture");
+    if (btn) btn.classList.remove("hidden");
   } catch (e) {
     Swal.fire("Erreur", "Caméra inaccessible", "error");
   }
@@ -3108,18 +2691,22 @@ export async function startContractCamera() {
 
 export function takeContractSnapshot() {
   const v = document.getElementById("contract-video");
+  if (!v) return;
   const c = document.createElement("canvas");
-  c.width = v.videoWidth;
-  c.height = v.videoHeight;
+  c.width = v.videoWidth || 640;
+  c.height = v.videoHeight || 480;
   c.getContext("2d").drawImage(v, 0, 0);
   c.toBlob(
     (blob) => {
       AppState.contractBlob = blob;
       const img = document.getElementById("contract-img-preview");
-      img.src = URL.createObjectURL(blob);
-      img.classList.remove("hidden");
+      if (img) {
+        img.src = URL.createObjectURL(blob);
+        img.classList.remove("hidden");
+      }
       v.classList.add("hidden");
-      document.getElementById("btn-contract-capture").classList.add("hidden");
+      const btn = document.getElementById("btn-contract-capture");
+      if (btn) btn.classList.add("hidden");
       if (AppState.contractStream) {
         AppState.contractStream.getTracks().forEach((t) => t.stop());
         AppState.contractStream = null;
@@ -3131,253 +2718,227 @@ export function takeContractSnapshot() {
 }
 
 export function previewContractFile(e) {
-  const file = e.target.files[0];
+  const file = e.target.files?.[0];
   if (!file) return;
   AppState.contractBlob = file;
   if (file.type.includes("image")) {
     const img = document.getElementById("contract-img-preview");
-    img.src = URL.createObjectURL(file);
-    img.classList.remove("hidden");
-    document.getElementById("contract-icon").classList.add("hidden");
+    if (img) {
+      img.src = URL.createObjectURL(file);
+      img.classList.remove("hidden");
+    }
+    const icon = document.getElementById("contract-icon");
+    if (icon) icon.classList.add("hidden");
   }
 }
 
-
-
 export async function viewDocumentHistory(empId, docKey, docLabel) {
-    Swal.fire({ title: 'Recherche...', didOpen: () => Swal.showLoading() });
+  Swal.fire({ title: 'Recherche...', didOpen: () => Swal.showLoading() });
+  
+  try {
+    const response = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/read-archives?employee_id=${empId}&doc_type=${docKey}`);
+    const archives = await response.json();
     
-    try {
-        const response = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/read-archives?employee_id=${empId}&doc_type=${docKey}`);
-        const archives = await response.json();
-        
-        if (archives.length === 0) {
-            return Swal.fire("Historique Vierge", "Aucune ancienne version n'est enregistrée pour ce document.", "info");
-        }
-
-        let html = '<div class="text-left space-y-4 max-h-[60vh] overflow-y-auto custom-scroll pr-2 mt-4">';
-        
-        archives.forEach((arc, index) => {
-            const dateObj = new Date(arc.created_at);
-            const dateStr = dateObj.toLocaleDateString('fr-FR');
-            const timeStr = dateObj.toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'});
-            
-            // Le premier de la liste est souvent l'actuel
-            const isCurrent = index === 0 ? '<span class="bg-emerald-100 text-emerald-700 text-[9px] px-2 py-0.5 rounded font-black uppercase ml-2">Actif</span>' : '';
-            const safeLabel = docLabel.replace(/'/g, "\\'");
-
-            html += `
-                <div class="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl hover:bg-white transition-all shadow-sm">
-                    <div class="flex items-center gap-4">
-                        <div class="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center"><i class="fa-solid fa-file-contract"></i></div>
-                        <div>
-                            <p class="text-xs font-bold text-slate-800 uppercase tracking-tighter">Version du ${dateStr} ${isCurrent}</p>
-                            <p class="text-[10px] text-slate-400 font-medium">À ${timeStr} • Par ${arc.agent || 'Système'}</p>
-                        </div>
-                    </div>
-                    <button onclick="viewDocument('${arc.file_url}', '${safeLabel} - Archive')" class="px-4 py-2 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase hover:bg-blue-600 transition-all shadow-md active:scale-95">
-                        Ouvrir
-                    </button>
-                </div>
-            `;
-        });
-        html += '</div>';
-
-        Swal.fire({
-            title: `<span class="text-lg font-black uppercase tracking-tight text-slate-800">Historique : ${docLabel}</span>`,
-            html: html,
-            width: '600px',
-            showConfirmButton: false,
-            showCloseButton: true,
-            customClass: { popup: 'rounded-2xl' }
-        });
-        
-    } catch (e) {
-        console.error(e);
-        Swal.fire("Erreur", "Impossible de charger l'historique.", "error");
+    if (!archives || archives.length === 0) {
+      return Swal.fire("Historique Vierge", "Aucune ancienne version n'est enregistrée pour ce document.", "info");
     }
+
+    let html = '<div class="text-left space-y-4 max-h-[60vh] overflow-y-auto custom-scroll pr-2 mt-4">';
+    archives.forEach((arc, index) => {
+      const dateObj = new Date(arc.created_at);
+      const dateStr = dateObj.toLocaleDateString('fr-FR');
+      const timeStr = dateObj.toLocaleTimeString('fr-FR', {hour: '2-digit', minute:'2-digit'});
+      const isCurrent = index === 0 ? '<span class="bg-emerald-100 text-emerald-700 text-[9px] px-2 py-0.5 rounded font-black uppercase ml-2">Actif</span>' : '';
+      const safeLabel = (docLabel || "").replace(/'/g, "\\'");
+
+      html += `
+        <div class="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl hover:bg-white transition-all shadow-sm">
+            <div class="flex items-center gap-4">
+                <div class="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-lg flex items-center justify-center"><i class="fa-solid fa-file-contract"></i></div>
+                <div>
+                    <p class="text-xs font-bold text-slate-800 uppercase tracking-tighter">Version du ${dateStr} ${isCurrent}</p>
+                    <p class="text-[10px] text-slate-400 font-medium">À ${timeStr} • Par ${arc.agent || 'Système'}</p>
+                </div>
+            </div>
+            <button onclick="window.viewDocument('${arc.file_url}', '${safeLabel} - Archive')" class="px-4 py-2 bg-slate-900 text-white rounded-lg text-[10px] font-black uppercase hover:bg-blue-600 transition-all shadow-md active:scale-95">
+                Ouvrir
+            </button>
+        </div>
+      `;
+    });
+    html += '</div>';
+
+    Swal.fire({
+      title: `<span class="text-lg font-black uppercase tracking-tight text-slate-800">Historique : ${docLabel}</span>`,
+      html: html,
+      width: '600px',
+      showConfirmButton: false,
+      showCloseButton: true,
+      customClass: { popup: 'rounded-2xl' }
+    });
+  } catch (e) {
+    console.error(e);
+    Swal.fire("Erreur", "Impossible de charger l'historique.", "error");
+  }
 }
 
 export function resetContractCamera() {
   AppState.contractBlob = null;
-  document.getElementById("contract-img-preview").classList.add("hidden");
-  document.getElementById("contract-video").classList.add("hidden");
-  document.getElementById("contract-icon").classList.remove("hidden");
-  document.getElementById("btn-contract-capture").classList.add("hidden");
-  if (AppState.contractStream)
+  const preview = document.getElementById("contract-img-preview");
+  if (preview) preview.classList.add("hidden");
+  const video = document.getElementById("contract-video");
+  if (video) video.classList.add("hidden");
+  const icon = document.getElementById("contract-icon");
+  if (icon) icon.classList.remove("hidden");
+  const btn = document.getElementById("btn-contract-capture");
+  if (btn) btn.classList.add("hidden");
+  if (AppState.contractStream) {
     AppState.contractStream.getTracks().forEach((t) => t.stop());
+    AppState.contractStream = null;
+  }
 }
-
-
 
 export async function openBulkArchiveModal(empId) {
-    const { value: formValues } = await Swal.fire({
-        title: '<span class="text-xl font-black uppercase tracking-tight">Numérisation Massive</span>',
-        html: `
-            <p class="text-xs text-slate-500 mb-6 px-2 text-left">Sélectionnez les documents scannés ou photographiés. Ils seront compressés et classés automatiquement dans le dossier du collaborateur.</p>
-            <div class="space-y-4 text-left bg-slate-50 p-6 rounded-2xl border border-slate-100">
-                
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1"><i class="fa-solid fa-file-signature text-blue-500 mr-1"></i> Contrat signé</label>
-                    <input type="file" id="bulk-contrat" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:bg-white file:text-blue-600 file:shadow-sm hover:file:bg-blue-50" accept="image/*,application/pdf">
-                </div>
-
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1 mt-4"><i class="fa-solid fa-id-card text-purple-500 mr-1"></i> Pièce d'Identité</label>
-                    <input type="file" id="bulk-id_card" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:bg-white file:text-purple-600 file:shadow-sm hover:file:bg-purple-50" accept="image/*,application/pdf">
-                </div>
-
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1 mt-4"><i class="fa-solid fa-file-pdf text-indigo-500 mr-1"></i> Curriculum Vitae</label>
-                    <input type="file" id="bulk-cv" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:bg-white file:text-indigo-600 file:shadow-sm hover:file:bg-indigo-50" accept="image/*,application/pdf">
-                </div>
-
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1 mt-4"><i class="fa-solid fa-graduation-cap text-emerald-500 mr-1"></i> Diplôme</label>
-                    <input type="file" id="bulk-diploma" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:bg-white file:text-emerald-600 file:shadow-sm hover:file:bg-emerald-50" accept="image/*,application/pdf">
-                </div>
-
-                <div>
-                    <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1 mt-4"><i class="fa-solid fa-file-invoice text-orange-500 mr-1"></i> Attestation / Autre</label>
-                    <input type="file" id="bulk-attestation" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:bg-white file:text-orange-600 file:shadow-sm hover:file:bg-orange-50" accept="image/*,application/pdf">
-                </div>
-
-            </div>
-        `,
-        showCancelButton: true,
-        confirmButtonText: "Archiver les documents",
-        confirmButtonColor: "#0f172a",
-        cancelButtonText: "Annuler",
-        width: '600px',
-        customClass: { popup: 'rounded-[2rem]' },
-        preConfirm: () => {
-            return {
-                contrat: document.getElementById('bulk-contrat').files[0],
-                id_card: document.getElementById('bulk-id_card').files[0],
-                cv: document.getElementById('bulk-cv').files[0],
-                diploma: document.getElementById('bulk-diploma').files[0],
-                attestation: document.getElementById('bulk-attestation').files[0]
-            }
-        }
-    });
-
-    if (formValues) {
-        // On vérifie s'il a sélectionné au moins UN fichier
-        const hasFiles = Object.values(formValues).some(file => file !== undefined);
-        if (!hasFiles) return Swal.fire("Attention", "Vous n'avez sélectionné aucun fichier.", "warning");
-
-        Swal.fire({ title: "Archivage en cours...", text: "Compression et envoi des données...", allowOutsideClick: false, didOpen: () => Swal.showLoading() });
-
-        const fd = new FormData();
-        fd.append("employee_id", empId);
-        fd.append("agent", AppState.currentUser.nom);
-
-        try {
-            // Traitement et compression intelligente des fichiers
-            const types = ['contrat', 'id_card', 'cv', 'diploma', 'attestation'];
-            for (const type of types) {
-                const file = formValues[type];
-                if (file) {
-                    // Si c'est une image, on la compresse via ton utilitaire, sinon on l'envoie telle quelle (ex: PDF)
-                    const processedFile = file.type.startsWith('image/') ? await window.compressImage(file) : file;
-                    // Le 3ème argument définit le nom de fichier d'origine
-                    fd.append(type, processedFile, file.name); 
-                }
-            }
-
-            const response = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/bulk-upload-docs`, {
-                method: "POST",
-                body: fd
-            });
-
-            if (response.ok) {
-                const resData = await response.json();
-                Swal.fire("Succès", `${resData.count} document(s) archivé(s) avec succès.`, "success");
-                
-                // On rafraîchit la base et on rouvre le dossier pour voir les nouveaux fichiers
-                await window.fetchData(true);
-                window.openFullFolder(empId);
-            } else {
-                throw new Error("Erreur serveur lors de l'archivage.");
-            }
-        } catch (e) {
-            Swal.fire("Erreur", e.message, "error");
-        }
+  const { value: formValues } = await Swal.fire({
+    title: '<span class="text-xl font-black uppercase tracking-tight">Numérisation Massive</span>',
+    html: `
+      <p class="text-xs text-slate-500 mb-6 px-2 text-left">Sélectionnez les documents scannés ou photographiés. Ils seront compressés et classés automatiquement dans le dossier du collaborateur.</p>
+      <div class="space-y-4 text-left bg-slate-50 p-6 rounded-2xl border border-slate-100">
+          <div>
+              <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1"><i class="fa-solid fa-file-signature text-blue-500 mr-1"></i> Contrat signé</label>
+              <input type="file" id="bulk-contrat" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:bg-white file:text-blue-600 file:shadow-sm hover:file:bg-blue-50" accept="image/*,application/pdf">
+          </div>
+          <div>
+              <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1 mt-4"><i class="fa-solid fa-id-card text-purple-500 mr-1"></i> Pièce d'Identité</label>
+              <input type="file" id="bulk-id_card" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:bg-white file:text-purple-600 file:shadow-sm hover:file:bg-purple-50" accept="image/*,application/pdf">
+          </div>
+          <div>
+              <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1 mt-4"><i class="fa-solid fa-file-pdf text-indigo-500 mr-1"></i> Curriculum Vitae</label>
+              <input type="file" id="bulk-cv" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:bg-white file:text-indigo-600 file:shadow-sm hover:file:bg-indigo-50" accept="image/*,application/pdf">
+          </div>
+          <div>
+              <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1 mt-4"><i class="fa-solid fa-graduation-cap text-emerald-500 mr-1"></i> Diplôme</label>
+              <input type="file" id="bulk-diploma" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:bg-white file:text-emerald-600 file:shadow-sm hover:file:bg-emerald-50" accept="image/*,application/pdf">
+          </div>
+          <div>
+              <label class="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-1 mt-4"><i class="fa-solid fa-file-invoice text-orange-500 mr-1"></i> Attestation / Autre</label>
+              <input type="file" id="bulk-attestation" class="w-full text-xs text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-[10px] file:font-black file:bg-white file:text-orange-600 file:shadow-sm hover:file:bg-orange-50" accept="image/*,application/pdf">
+          </div>
+      </div>
+    `,
+    showCancelButton: true,
+    confirmButtonText: "Archiver les documents",
+    confirmButtonColor: "#0f172a",
+    cancelButtonText: "Annuler",
+    width: '600px',
+    customClass: { popup: 'rounded-[2rem]' },
+    preConfirm: () => {
+      return {
+        contrat: document.getElementById('bulk-contrat')?.files?.[0],
+        id_card: document.getElementById('bulk-id_card')?.files?.[0],
+        cv: document.getElementById('bulk-cv')?.files?.[0],
+        diploma: document.getElementById('bulk-diploma')?.files?.[0],
+        attestation: document.getElementById('bulk-attestation')?.files?.[0]
+      };
     }
-}
+  });
 
+  if (formValues) {
+    const hasFiles = Object.values(formValues).some((file) => file !== undefined);
+    if (!hasFiles) return Swal.fire("Attention", "Vous n'avez sélectionné aucun fichier.", "warning");
 
+    Swal.fire({ title: "Archivage en cours...", text: "Compression et envoi des données...", allowOutsideClick: false, didOpen: () => Swal.showLoading() });
 
-export async function downloadEmployeeZip(empId, empName) {
-    Swal.fire({
-        title: 'Création de l\'archive...',
-        html: '<p class="text-xs text-slate-500 mb-4">Aspiration et compression des documents en cours.</p><i class="fa-solid fa-file-zipper text-5xl text-slate-800 animate-bounce"></i>',
-        allowOutsideClick: false,
-        showConfirmButton: false,
-        didOpen: () => Swal.showLoading()
-    });
+    const fd = new FormData();
+    fd.append("employee_id", empId);
+    fd.append("agent", AppState.currentUser?.nom || "");
 
     try {
-        const token = localStorage.getItem("sirh_token");
-        
-        // On utilise "fetch" natif car secureFetch s'attend généralement à recevoir du JSON, or ici on reçoit un fichier (Blob)
-        const response = await fetch(`${SIRH_CONFIG.apiBaseUrl}/export-folder/${empId}`, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-
-        if (!response.ok) {
-            const errData = await response.json().catch(() => ({}));
-            throw new Error(errData.error || "Erreur du serveur lors de la compression.");
+      const types = ['contrat', 'id_card', 'cv', 'diploma', 'attestation'];
+      for (const type of types) {
+        const file = formValues[type];
+        if (file) {
+          const processedFile = file.type.startsWith('image/') ? await compressImage(file) : file;
+          fd.append(type, processedFile, file.name); 
         }
+      }
 
-        // Transformation de la réponse en fichier binaire
-        const blob = await response.blob();
-        
-        // Création d'un lien de téléchargement invisible
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        
-        const cleanName = empName.replace(/[^a-zA-Z0-9]/g, "_");
-        a.download = `Dossier_${cleanName}.zip`; // Le nom du fichier qui s'enregistrera sur le PC
-        
-        document.body.appendChild(a);
-        a.click(); // Déclenche le téléchargement
-        
-        // Nettoyage
-        a.remove();
-        window.URL.revokeObjectURL(url);
+      const response = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/bulk-upload-docs`, {
+        method: "POST",
+        body: fd
+      });
 
-        Swal.fire("Terminé !", "L'archive a été téléchargée avec succès.", "success");
-
+      if (response.ok) {
+        const resData = await response.json();
+        Swal.fire("Succès", `${resData.count} document(s) archivé(s) avec succès.`, "success");
+        await fetchData(true);
+        openFullFolder(empId);
+      } else {
+        throw new Error("Erreur serveur lors de l'archivage.");
+      }
     } catch (e) {
-        console.error("Export ZIP Error:", e);
-        Swal.fire("Échec", e.message, "error");
+      Swal.fire("Erreur", e.message, "error");
     }
+  }
 }
 
+export async function downloadEmployeeZip(empId, empName) {
+  Swal.fire({
+    title: 'Création de l\'archive...',
+    html: '<p class="text-xs text-slate-500 mb-4">Aspiration et compression des documents en cours.</p><i class="fa-solid fa-file-zipper text-5xl text-slate-800 animate-bounce"></i>',
+    allowOutsideClick: false,
+    showConfirmButton: false,
+    didOpen: () => Swal.showLoading()
+  });
+
+  try {
+    const token = localStorage.getItem("sirh_token");
+    const response = await fetch(`${SIRH_CONFIG.apiBaseUrl}/export-folder/${empId}`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || "Erreur du serveur lors de la compression.");
+    }
+
+    const blob = await response.blob();
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    
+    const cleanName = (empName || "employe").replace(/[^a-zA-Z0-9]/g, "_");
+    a.download = `Dossier_${cleanName}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(url);
+
+    Swal.fire("Terminé !", "L'archive a été téléchargée avec succès.", "success");
+  } catch (e) {
+    console.error("Export ZIP Error:", e);
+    Swal.fire("Échec", e.message, "error");
+  }
+}
 
 // ============================================================
-// FONCTIONS DE CACHE POUR MODE HORS-LIGNE
+// CACHE HORS-LIGNE
 // ============================================================
 
-// Sauvegarde des employés dans localStorage pour le mode hors-ligne
 export function cacheEmployeesLocally(employees) {
   try {
     const cacheData = {
       data: employees,
       timestamp: Date.now(),
-      expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000) // expire dans 7 jours
+      expiresAt: Date.now() + (7 * 24 * 60 * 60 * 1000)
     };
     localStorage.setItem('sirh_employees_cache', JSON.stringify(cacheData));
-    console.log("💾 Données employés mises en cache localement");
   } catch (e) {
     console.warn("Impossible de mettre en cache local", e);
   }
 }
 
-// Récupération des employés depuis le cache local
 export function getCachedEmployees() {
   try {
     const cached = localStorage.getItem('sirh_employees_cache');
@@ -3393,7 +2954,6 @@ export function getCachedEmployees() {
   }
 }
 
-// Sauvegarde des métadonnées (pagination, etc.)
 export function cacheEmployeesMeta(meta) {
   try {
     localStorage.setItem('sirh_employees_meta', JSON.stringify(meta));
@@ -3410,6 +2970,8 @@ export function getCachedEmployeesMeta() {
   }
 }
 
+      
+
 
 // ============================================================
 // FONCTIONS UTILITAIRES MANQUANTES
@@ -3423,18 +2985,4 @@ export async function refreshAllData(force = false) {
   await window.fetchLeaveRequests();
 }
 
-// Voir un document dans un modal
-export function viewDocument(url, title) {
-  if (!url || url === "#" || url === "null") {
-    Swal.fire("Erreur", "Document non disponible", "warning");
-    return;
-  }
-  
-  Swal.fire({
-    title: title || "Document",
-    html: `<iframe src="${url}" style="width:100%; height:500px; border:none;"></iframe>`,
-    width: "900px",
-    showConfirmButton: true,
-    confirmButtonText: "Fermer"
-  });
-}
+
