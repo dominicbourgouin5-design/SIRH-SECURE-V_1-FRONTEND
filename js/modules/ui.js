@@ -693,7 +693,7 @@ let currentTutorial = null;
 let currentStepIndex = 0;
 let tutorialSteps = [];
 
-async function fetchTutorials() {
+export async function fetchTutorials() {
     try {
         const response = await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/tutorials`);
         const tutorials = await response.json();
@@ -708,7 +708,7 @@ async function fetchTutorials() {
     }
 }
 
-async function startTutorial(tutorial) {
+export async function startTutorial(tutorial) {
     currentTutorial = tutorial;
     currentStepIndex = 0;
     tutorialSteps = tutorial.steps || [];
@@ -745,7 +745,7 @@ function showStep(index) {
     }
 }
 
-async function nextTutorialStep() {
+export async function nextTutorialStep() {
     if (!currentTutorial || !tutorialSteps[currentStepIndex]) return;
     
     const currentStep = tutorialSteps[currentStepIndex];
@@ -769,7 +769,7 @@ async function nextTutorialStep() {
     }
 }
 
-async function completeTutorial() {
+export async function completeTutorial() {
     if (currentTutorial) {
         await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/tutorials/complete`, {
             method: 'POST',
@@ -789,14 +789,14 @@ async function completeTutorial() {
     });
 }
 
-function closeTutorial() {
+export function closeTutorial() {
     document.getElementById('tutorial-overlay').classList.add('hidden');
     currentTutorial = null;
     currentStepIndex = 0;
     tutorialSteps = [];
 }
 
-async function skipTutorial() {
+export async function skipTutorial() {
     if (currentTutorial) {
         await secureFetch(`${SIRH_CONFIG.apiBaseUrl}/tutorials/reset`, {
             method: 'POST',
@@ -807,7 +807,7 @@ async function skipTutorial() {
     closeTutorial();
 }
 
-function initTutorial() {
+export function initTutorial() {
     const checkUser = setInterval(() => {
         if (AppState.currentUser && document.getElementById('view-dash')) {
             clearInterval(checkUser);
